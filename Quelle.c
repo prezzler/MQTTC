@@ -122,10 +122,39 @@ struct PubSubClient{
 
 
 };
-
-
-
 typedef struct PubSubClient PubSubClient;
+
+
+//---------------------------------Connect-Funktion-Opitmierung------------------------------------------------------
+struct Connect{
+    PubSubClient* PSCsrc;
+    const char* id;
+    const char* user;
+    const char* pass;
+    const char* willTopic;
+    uint8_t willQos;
+    bool willRetain;
+    const char* willMessage;
+    bool cleanSession;
+};
+typedef struct Connect Connect;
+
+Connect* ConnectKonstruktor(PubSubClient* src) //setzt Standartwerte
+{
+    Connect tmp;
+    tmp.PSCsrc = &src;
+    tmp.id = NULL;
+    tmp.pass = NULL;
+    tmp.user = NULL;
+    tmp.willMessage = NULL;
+    tmp.willQos = NULL;
+    tmp.willRetain = NULL;
+    tmp.willTopic = NULL;
+
+    return &tmp;
+}
+//-----------------------------------------------------------------------------------
+
 
 
 //---------------------------------Deklarierung der Funktionen-------------------------------------------------------
