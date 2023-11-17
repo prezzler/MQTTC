@@ -190,6 +190,7 @@ bool readByte(PubSubClient* src, uint8_t * result);
 
 uint32_t readPacket(PubSubClient* src, uint16_t* lengthLength);
 
+bool connected();
 
     //_______________________________Ende-PubSubClient-Funktionen__________________________________________________
 
@@ -205,7 +206,7 @@ bool Client_write(const uint8_t* buf, uint16_t len);
 int Client_connectIp(Client* src, uint8_t ip, uint16_t port);
 int Client_connectDomain(Client* src, const char* domain, uint16_t port);
 
-uint8_t Client_connected(Client* src);  // Benutzung: Client_connected(src->_client);
+uint8_t Client_connected(Client* src);  // Benutzung: Client_connected(&src->_client);
 uint8_t Client_read(Client* src);
 int Client_available(Client* src); // Benutzung: Client_available(src->_client);
 // versenden bzw. schreiben von buffer in den Netzwerk Client 
@@ -346,16 +347,16 @@ PubSubClient* Constructor() {
  // PubSubClient.connected() und Client.connected() 
  // und Client.connect() (mit Domain bzw. IP und Port) muss gemacht werden
 bool connectStart(PubSubClient* src, Connect* con){ 
-    if (!src->connected()) {
+    if (!connected()) {
         int result = 0;
-        if(src->_client->connected()){
+        if(Client_connected(&src->_client)){
             result = 1;
         } else {
             if (src->domain != NULL) {
-                result = src->_client->connect(src->domain, src->port);
+                result = Client_connectDomain(src,&src->domain, src->port);
             }
             else  {
-                result = src->_client->connect(src->ip, src->port);
+                result = Client_connectIp(src,&src->ip, src->port);
             }
         }
 
@@ -528,14 +529,14 @@ bool readByteIntoBuff(PubSubClient* src, uint16_t* index){
 // reads a byte into result
 bool readByte(PubSubClient* src, uint8_t * result) {
    uint32_t previousMillis = millis();
-   while(!src->_client->available()) {  // solange eine einkommende Nachricht verfügbar ist 
+   while(!Client_available(&src->_client)) {  // solange eine einkommende Nachricht verfügbar ist 
      yield();   // gibt dem Prozessor die Möglichkeit andere Prozesse vorzuziehen (Multithreading)
      uint32_t currentMillis = millis();
      if(currentMillis - previousMillis >= ((int32_t) src->socketTimeout * 1000)){
        return false;
      }
    }
-   *result = src->_client->read();
+   *result = Client_read(&src->_client);
    return true;
 }
 
