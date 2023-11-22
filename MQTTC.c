@@ -144,14 +144,14 @@ PubSubClient* Constructor() {
 bool connectStart(PubSubClient* src, Connect* con){ 
     if (!connected()) {
         int result = 0;
-        if(Client_connected(&src->_client)){
+  //      if(Client_connected(&src->_client)){
             result = 1;
         } else {
             if (src->domain != NULL) {
-                result = Client_connectDomain(src,&src->domain, src->port);
+ //               result = Client_connectDomain(src,&src->domain, src->port);
             }
             else  {
-                result = Client_connectIp(src,&src->ip, src->port);
+  //              result = Client_connectIp(src,&src->ip, src->port);
             }
         }
 
