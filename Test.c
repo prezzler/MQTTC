@@ -7,6 +7,8 @@
 #include <string.h>
 #include <Windows.h>
 
+bool debug = true;
+
 	#define MQTT_VERSION_3_1      3
 	#define MQTT_VERSION_3_1_1    4
 
@@ -121,7 +123,31 @@ typedef struct Connect Connect;
 
 
 //---------------------------------Definition der Funktionen-------------------------------------------------------
+void copyString(char *dest, const char *src) {
+    while (*src != '\0') {
+        *dest = *src;
+        dest++;
+        src++;
+    }
+    *dest = '\0'; // Don't forget to null-terminate the destination string
+}
 
+void printBinary(char ch) {
+    // Size of a char in bits (assuming 8 bits per byte)
+    int size = sizeof(char) * 8;
+
+    // Loop through each bit from the most significant bit to the least significant bit
+    for (int i = size - 1; i >= 0; i--) {
+        // Use bitwise AND to check the value of the current bit
+        int bit = (ch & (1 << i)) ? 1 : 0;
+
+        // Print the bit
+        printf("%d", bit);
+    }
+
+    // Add a newline for clarity
+    printf("\n");
+}
 
 
 // unsigned long millis() {
@@ -133,17 +159,23 @@ typedef struct Connect Connect;
 // }
 
 unsigned long millis() {
+    if(debug)
+        printf("Debug: millis() hole milis\n");
     return GetTickCount();
 }
 
 Connect* ConnectConstructor(PubSubClient* src) //setzt Standartwerte
 {
+    if(debug)
+        printf("Debug: ConnectConstructor()\n");
    Connect* tmp = (Connect*)malloc(sizeof(Connect));
 
     if (tmp != NULL) {
         // Set default values
         tmp->PSCsrc = src;
-        tmp->id = NULL;
+        // const char tmpid[9] = "Standart";
+       // copyString(tmp->id,"Standart");
+        tmp->id = "Standart";
         tmp->pass = NULL;
         tmp->user = NULL;
         tmp->willMessage = NULL;
@@ -243,6 +275,8 @@ uint16_t getBufferSize(PubSubClient* src) {
 
 PubSubClient* Constructor() {
 	PubSubClient* tmp = (PubSubClient*)malloc(sizeof(PubSubClient));
+    if (debug)
+        printf("Debug: Constructor() PubSubClient initialisiert Werte\n");
 
     if (tmp != NULL) {
         tmp->_state = MQTT_DISCONNECTED;
@@ -254,7 +288,7 @@ PubSubClient* Constructor() {
         tmp->port = 0;
     }
 
-    return tmp
+    return tmp;
 }
 
 
@@ -272,15 +306,18 @@ PubSubClient* Constructor() {
 
 
 bool Client_write(const uint8_t* buf, uint16_t len, uint8_t PacketType) {
-    printf("Pseudo Write Funktion: ");
+    if(debug)
+        printf("Debug: Client_write() Schreibe in neue Datei\n");
+    printf("    Inhalt des Buffers: \n");
     for (int i = 0; i < len; i++) {
         printf("%u ", buf[i]);  // Use %u for uint8_t type
     }
     // Hier muss in eine Datei geschrieben werden
-    char filename[6] = { (char)PacketType , '.', 'h', 'e', 'x','\0'};
+    char filename[8] = { 'C','N', 'N' , '.', 't', 'x', 't','\0'};
+    printf("    Oeffne neu erstellte Datei %s", filename);
     FILE* file = fopen(filename , "wb");
     if (file == NULL) {
-        perror("Error opening file");
+        perror("    Error opening file");
         return 1;
     }
     fwrite(buf, sizeof(unsigned char), len, file);
@@ -295,6 +332,8 @@ bool Client_write(const uint8_t* buf, uint16_t len, uint8_t PacketType) {
 
 // Header wird in die ersten 4 Stellen des Buffers geschrieben 
 size_t buildHeader(uint8_t header, uint8_t* buf, uint16_t length) {
+    if(debug)
+        printf("Debug: buildHeader() Erstelle Header\n");
     uint8_t lenBuf[4];
     uint8_t llen = 0;
     uint8_t digit;
@@ -320,8 +359,10 @@ size_t buildHeader(uint8_t header, uint8_t* buf, uint16_t length) {
 
 
 bool write(PubSubClient* src, uint8_t header, uint16_t length) {
+    if(debug)
+        printf("Debug: write()\n");
     uint16_t rc;
-    uint8_t hlen = buildHeader(header, &src->buffer, length);
+    uint8_t hlen = buildHeader(header, src->buffer, length);
 
 // #ifdef MQTT_MAX_TRANSFER_SIZE
 //     uint8_t* writeBuf = buf+(MQTT_MAX_HEADER_SIZE-hlen);
@@ -337,7 +378,7 @@ bool write(PubSubClient* src, uint8_t header, uint16_t length) {
 //     }
 //     return result;
 // #else
-    rc = Client_write(&src->buffer+(MQTT_MAX_HEADER_SIZE-hlen),length+hlen, header);
+    rc = Client_write(src->buffer+(MQTT_MAX_HEADER_SIZE-hlen),length+hlen, header);
     src->lastOutActivity = millis();
     return (rc == hlen+length);
 // #endif
@@ -345,6 +386,8 @@ bool write(PubSubClient* src, uint8_t header, uint16_t length) {
 
 
 uint16_t writeString(const char* string, uint8_t* buf, uint16_t pos) {
+    if(debug)
+        printf("Debug: writeString() Schreibe String inkl. Laenge in Buffer\n");
     const char* idp = string;
     uint16_t i = 0;
     pos += 2;
@@ -366,32 +409,36 @@ int Client_available(){ // hier wird eig im echten geprüft ob vom Socket neue D
 return 1;
 }
 
-void Client_stop(Client* src) {
+void Client_stop() {
     // TODO
-    printf("\n Stoppe den Client \n");
+    printf("******Stoppe den Client******\n");
 }
 
 bool checkStringLength(PubSubClient* src, int l, const char* s) {
+    if(debug)
+        printf("Debug: checkStringLenght()\n");
+        printf("    %d %d %d\n", l, strnlen(s, src->bufferSize), src->bufferSize);
     if (l + 2 + strnlen(s, src->bufferSize) > src->bufferSize) {
-        Client_stop(&src->_client);
+        Client_stop();
         return false;
     }
     return true;
 }
 
 // Dient dazu ein Byte aus der Datei in den Buffer zu schreiben
-bool readByteOfFileIntoBuff(PubSubClient* src, uint8_t* index, FILE* file){
+bool readByteOfFileIntoBuff(PubSubClient* src, uint16_t* index, FILE* file){
     // eine weitere Client.h Funktion, die dazu dient einen Byte vom network socket zu lesen 
     // gibt normalerweise den gelesenen byte zurück und sons -1
-    
-    printf("Pseudo Read Funktion: ");
-    printf("\n");
+    if(debug)
+        printf("Debug: readByteOfFileIntoBuff()\n");
     // Hier muss in eine Datei geschrieben werden
 
         // Read and print the contents of the file
         char buffer=0; // Buffer to store read data
 
     if(fread(&buffer, 1, 1, file) != 0){
+        printf("    Erstes Byte der Datei: ");
+        printBinary(buffer);
         src->buffer[*index] = buffer;
         (*index)++;
         return true; // Return true to indicate successful execution
@@ -400,7 +447,9 @@ bool readByteOfFileIntoBuff(PubSubClient* src, uint8_t* index, FILE* file){
         return false;
 }
 
-uint32_t readPacket(PubSubClient* src, uint16_t* lengthLength,int PacketType ) {
+uint32_t readPacket(PubSubClient* src, uint8_t* lengthLength,int PacketType ) {
+    if(debug)
+        printf("Debug: readPacket()\n");
     uint16_t len = 0;
         // File pointer
         FILE* file;
@@ -408,16 +457,18 @@ uint32_t readPacket(PubSubClient* src, uint16_t* lengthLength,int PacketType ) {
         if(PacketType == MQTTCONNACK){
         // File path (change this to your file's path)
             filePath = "CONNACK.txt";
+            printf("    Nutze Datei: %s\n", filePath);
         }
-        else 
-            filePath = "notihing.txt";
-
+        else {
+            filePath = "nothing.txt";
+            printf("    Nutze Datei: %s\n", filePath);
+        }
         // Open file for reading ("r" stands for read mode)
         file = fopen(filePath, "r");
 
         // Check if the file was opened successfully
         if (file == NULL) {
-            fprintf(stderr, "Error opening file %s\n", filePath);
+            fprintf(stderr, "   Error opening file %s\n", filePath);
             return 1; // Return an error code
         }
 
@@ -433,7 +484,7 @@ uint32_t readPacket(PubSubClient* src, uint16_t* lengthLength,int PacketType ) {
         if (len == 5) {
             // Inconid remaining length encoding - kill the connection
             src->_state = MQTT_DISCONNECTED;
-            Client_stop(&(src->_client));
+            Client_stop();
             return 0;
         }
         if(fread(&digit, 1, 1, file) == 0) return 0;
@@ -456,6 +507,8 @@ uint32_t readPacket(PubSubClient* src, uint16_t* lengthLength,int PacketType ) {
 }
 
 bool connectStart(PubSubClient* src, Connect* con){ 
+if(debug)
+        printf("Debug: connectStart() Verbinde...\n");
 //     if (!connected()) {
 //         int result = 0;
 //   //      if(Client_connected(&src->_client)){														// Gehen davon aus dass die Verbindung steht
@@ -522,23 +575,23 @@ bool connectStart(PubSubClient* src, Connect* con){
 
             // ID Größe wird geprüft und in Buffer hinzugefügt
             checkStringLength(src, length, con->id); 
-            length = writeString(&con->id,&src->buffer,length);
+            length = writeString(con->id,src->buffer,length);
             
             // WillTopic wird geprüft und in Buffer hinzugefügt
             if (con->willTopic) {
-                checkStringLength(src,length,&con->willTopic);
-                length = writeString(&con->willTopic,src->buffer,length);
-                checkStringLength(src,length,&con->willMessage);
-                length = writeString(&con->willMessage,src->buffer,length);
+                checkStringLength(src,length,con->willTopic);
+                length = writeString(con->willTopic,src->buffer,length);
+                checkStringLength(src,length,con->willMessage);
+                length = writeString(con->willMessage,src->buffer,length);
             }
 
             // Username und Password wird geprüft und in Buffer hinzugefügt
             if(con->user != NULL) {
-                checkStringLength(src,length,&con->user);
-                length = writeString(&con->user,&src->buffer,length);
+                checkStringLength(src,length,con->user);
+                length = writeString(con->user,src->buffer,length);
                 if(con->pass != NULL) {
-                    checkStringLength(src,length,&con->pass);
-                    length = writeString(&con->pass,&src->buffer,length);
+                    checkStringLength(src,length,con->pass);
+                    length = writeString(con->pass,src->buffer,length);
                 }
             }
 
@@ -553,7 +606,7 @@ bool connectStart(PubSubClient* src, Connect* con){
                 //Zeit wird gestoppt
                 if (t - src->lastInActivity >= ((int32_t)src->socketTimeout * 1000UL)) {
                     src->_state = MQTT_CONNECTION_TIMEOUT;
-                    Client_stop(&src->_client);
+                    Client_stop();
                     return false;
                 }
                 // wenn es länger als vorgeschrieben dauert eine Antwort von dem Broker zu kriegen, dann wird gestoptt
@@ -561,9 +614,11 @@ bool connectStart(PubSubClient* src, Connect* con){
             // weil, die while Schleife verlassen wurde, gehen wir davon aus, dass eine einkommende Nachricht vorliegt
             uint8_t llen;
             uint32_t len = readPacket(src,&llen,MQTTCONNACK);
-
+            printf("ReturnCode von readPacket(): Laenge des gelesenen Pakets %d\n", len);
             if (len == 4) { // wenn die Länge des angekommenen Pakets 4 ist, handelt es sich um ein CONACK
+               
                 if (src->buffer[3] == 0) {  // letzter Byte eines CONACK ist der RC, wenn der 0 ist --> erfolgreiche Verbindung
+                    printf("CONNACK genehmigt :)\n");
                     src->lastInActivity = millis();
                     src->pingOutstanding = false;
                     src->_state = MQTT_CONNECTED;
@@ -571,9 +626,10 @@ bool connectStart(PubSubClient* src, Connect* con){
                 }
                 else {
                     src->_state = src->buffer[3];   // sonst wird der RC Wert des CONACKS in State geschrieben
+                    printf("CONNACK nicht genehmigt :( rc:%b\n", src->buffer[3]);
                 }
             }
-            Client_stop(&src->_client);
+            Client_stop();
 //        }
 //        else {
 //            src->_state = MQTT_CONNECT_FAILED;
@@ -583,16 +639,22 @@ bool connectStart(PubSubClient* src, Connect* con){
     return true;
 }
 
-int main(void) {	
-	PubSubClient* Client = Constructor();
-	Connect* Con = ConnectConstructor(Client);
-	
-	if (connectStart(Client, Con)) {
+int main(void) {    
+    if(debug)
+        printf("Debug: main() Haupt\n");
+    PubSubClient* Client = Constructor();
+    Connect* Con = ConnectConstructor(Client);
+    
+    if (connectStart(Client, Con)) {
         printf("ConnectStart() erfolgreich\n");
+    } else {
+        printf("ConnectStart() fehlgeschlagen\n");
     }
-	printf("hallo");
 
-    free(Client);   //nicht vergessen den in Constructor() allokierten Speicher zu löschen
-    free(Con);  //nicht vergessen den in ConnectConstructor() allokierten Speicher zu löschen
-	return 1;
+    printf("Gebe Speicher Frei\n");
+
+    free(Client);
+    free(Con);
+    printf("ENDE");
+    return 0;
 }
