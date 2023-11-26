@@ -7,7 +7,7 @@
 #include <string.h>
 #include <Windows.h>
 
-bool debug = true;
+bool debug = 1;
 
 	#define MQTT_VERSION_3_1      3
 	#define MQTT_VERSION_3_1_1    4
@@ -306,15 +306,21 @@ PubSubClient* Constructor() {
 
 
 bool Client_write(const uint8_t* buf, uint16_t len, uint8_t PacketType) {
-    if(debug)
-        printf("Debug: Client_write() Schreibe in neue Datei\n");
-    printf("    Inhalt des Buffers: \n");
-    for (int i = 0; i < len; i++) {
-        printf("%u ", buf[i]);  // Use %u for uint8_t type
-    }
     // Hier muss in eine Datei geschrieben werden
-    char filename[8] = { 'C','N', 'N' , '.', 't', 'x', 't','\0'};
-    printf("    Oeffne neu erstellte Datei %s", filename);
+    char* filename = (char*)malloc(8*sizeof(char));
+    if(debug){
+        printf("Debug: Client_write() Schreibe in neue Datei\n");
+        printf("    Inhalt des Buffers: \n");
+        for (int i = 0; i < len; i++) {
+            printBinary(buf[i]);
+        }
+    }
+    if(PacketType == MQTTCONNECT){
+        strcpy(filename, "CNN.hex");
+    }
+    if(PacketType == MQTTDISCONNECT){
+        strcpy(filename, "DSC.hex");
+    }
     FILE* file = fopen(filename , "wb");
     if (file == NULL) {
         perror("    Error opening file");
@@ -411,13 +417,15 @@ return 1;
 
 void Client_stop() {
     // TODO
-    printf("******Stoppe den Client******\n");
+    if(debug)
+        printf("******Stoppe den Client******\n");
 }
 
 bool checkStringLength(PubSubClient* src, int l, const char* s) {
-    if(debug)
+    if(debug){
         printf("Debug: checkStringLenght()\n");
         printf("    %d %d %d\n", l, strnlen(s, src->bufferSize), src->bufferSize);
+    }
     if (l + 2 + strnlen(s, src->bufferSize) > src->bufferSize) {
         Client_stop();
         return false;
@@ -437,8 +445,10 @@ bool readByteOfFileIntoBuff(PubSubClient* src, uint16_t* index, FILE* file){
         char buffer=0; // Buffer to store read data
 
     if(fread(&buffer, 1, 1, file) != 0){
-        printf("    Erstes Byte der Datei: ");
-        printBinary(buffer);
+        if(debug){
+            printf("    Erstes Byte der Datei: ");
+            printBinary(buffer);
+        }
         src->buffer[*index] = buffer;
         (*index)++;
         return true; // Return true to indicate successful execution
@@ -456,12 +466,14 @@ uint32_t readPacket(PubSubClient* src, uint8_t* lengthLength,int PacketType ) {
         const char* filePath;
         if(PacketType == MQTTCONNACK){
         // File path (change this to your file's path)
-            filePath = "CONNACK.txt";
-            printf("    Nutze Datei: %s\n", filePath);
+            filePath = "CONNACK.hex";
+                if(debug)
+                    printf("    Nutze Datei: %s\n", filePath);
         }
         else {
             filePath = "nothing.txt";
-            printf("    Nutze Datei: %s\n", filePath);
+                if(debug)
+                    printf("    Nutze Datei: %s\n", filePath);
         }
         // Open file for reading ("r" stands for read mode)
         file = fopen(filePath, "r");
@@ -614,11 +626,13 @@ if(debug)
             // weil, die while Schleife verlassen wurde, gehen wir davon aus, dass eine einkommende Nachricht vorliegt
             uint8_t llen;
             uint32_t len = readPacket(src,&llen,MQTTCONNACK);
-            printf("ReturnCode von readPacket(): Laenge des gelesenen Pakets %d\n", len);
+            if(debug)
+                printf("ReturnCode von readPacket(): Laenge des gelesenen Pakets %d\n", len);
             if (len == 4) { // wenn die Länge des angekommenen Pakets 4 ist, handelt es sich um ein CONACK
                
                 if (src->buffer[3] == 0) {  // letzter Byte eines CONACK ist der RC, wenn der 0 ist --> erfolgreiche Verbindung
-                    printf("CONNACK genehmigt :)\n");
+                    if(debug)
+                        printf("CONNACK genehmigt :)\n");
                     src->lastInActivity = millis();
                     src->pingOutstanding = false;
                     src->_state = MQTT_CONNECTED;
@@ -626,7 +640,8 @@ if(debug)
                 }
                 else {
                     src->_state = src->buffer[3];   // sonst wird der RC Wert des CONACKS in State geschrieben
-                    printf("CONNACK nicht genehmigt :( rc:%b\n", src->buffer[3]);
+                    if(debug)
+                        printf("CONNACK nicht genehmigt :( rc:%b\n", src->buffer[3]);
                 }
             }
             Client_stop();
@@ -639,22 +654,38 @@ if(debug)
     return true;
 }
 
+void disconnect(PubSubClient* src, Connect* Con) {
+	if(debug) 
+        printf("Debug: disconnect()\n");
+    src->buffer[0] = MQTTDISCONNECT;
+	src->buffer[1] = 0;
+	//_client->write(this->buffer, 2);
+    Client_write(src->buffer,2,MQTTDISCONNECT);
+	src->_state = MQTT_DISCONNECTED;
+	//_client->flush(); muss von Rossendorf implementiert werden
+	Client_stop();
+	src->lastInActivity = src->lastOutActivity = millis(); //millis ist f�r arduino, kann man aber auch mit time.h bib realisieren
+    if(debug)
+        printf("Gebe Speicher Frei\n");
+    free(src);
+    free(Con);
+}
+
 int main(void) {    
+    printf("START\n");
+    
     if(debug)
         printf("Debug: main() Haupt\n");
     PubSubClient* Client = Constructor();
     Connect* Con = ConnectConstructor(Client);
-    
-    if (connectStart(Client, Con)) {
-        printf("ConnectStart() erfolgreich\n");
-    } else {
-        printf("ConnectStart() fehlgeschlagen\n");
+    if(debug){
+        if (connectStart(Client, Con)) {
+            printf("ConnectStart() erfolgreich\n");
+        } else {
+            printf("ConnectStart() fehlgeschlagen\n");
+        }
     }
-
-    printf("Gebe Speicher Frei\n");
-
-    free(Client);
-    free(Con);
+    disconnect(Client,Con);
     printf("ENDE");
     return 0;
 }
