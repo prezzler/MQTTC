@@ -296,8 +296,11 @@ PubSubClient* Constructor() {
  // PubSubClient.connected() und Client.connected() 
  // und Client.connect() (mit Domain bzw. IP und Port) muss gemacht werden
 
-
-
+bool connected(PubSubClient* src) //TODO: muss richtig implementiert werden
+{
+    return true;  
+}
+//TODO: callbackfunktion muss implementiert werden
     //_______________________________Ende-PubSubClient-Funktionen__________________________________________________
 
     //_______________________________Beginn-Client-Funktionen_____________________________________________
@@ -736,7 +739,7 @@ bool loop(PubSubClient* pub, Connect con) {
                 } else if (type == MQTTPINGRESP) {
                     pub->pingOutstanding = false;
                 }
-            } else if (!connected()) {
+            } else if (!connected(pub)) {
                 // readPacket has closed the connection
                 return false;
             }
