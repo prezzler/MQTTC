@@ -206,4 +206,6 @@ int Client_available(Client* src); // Benutzung: Client_available(src->_client);
 
     //_______________________________Ende-Client-Funktionen__________________________________________________
 
+bool loop(PubSubClient* pub, Connect* con);
+
 //---------------------------------Ende Deklarierung der Funktionen-------------------------------------------------------

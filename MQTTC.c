@@ -446,5 +446,88 @@ bool Client_write(const uint8_t* buf, uint16_t len) {
 }
 
     //_______________________________Ende-Client-Funktionen__________________________________________________
+bool loop(PubSubClient* pub, Connect* con)
+{
+if (connected()) {
+        unsigned long t = millis();
+        if ((t - pub->lastInActivity > pub->keepAlive*1000UL) || (t - pub->lastOutActivity > pub->keepAlive*1000UL)) {
+            if (pub->pingOutstanding) {
+                pub->_state = MQTT_CONNECTION_TIMEOUT;
+                _client->stop(); //clientstopfunktion
+                return false;
+            } else {
+                pub->buffer[0] = MQTTPINGREQ;
+                pub->buffer[1] = 0;
+                _client->write(this->buffer,2); //clientwritefunktion
+                pub->lastOutActivity = t;
+                pub->lastInActivity = t;
+                pub->pingOutstanding = true;
+            }
+        }
+        if (_client->available()) { //available müsste von rossendorf übernommen werden
+            uint8_t llen;
+            uint16_t len = readPacket(&llen);
+            uint16_t msgId = 0;
+            uint8_t *payload;
+            if (len > 0) {
+                pub->lastInActivity = t;
+                uint8_t type = pub->buffer[0]&0xF0;
+                if (type == MQTTPUBLISH) 
+                {
+                    if (callback) 
+                    {
+
+                        uint16_t tl = (pub->buffer[llen+1]<<8)+pub->buffer[llen+2]; /* topic length in bytes */
+                        memmove(pub->buffer+llen+2,pub->buffer+llen+3,tl); /* move topic inside buffer 1 byte to front */
+                        pub->buffer[llen+2+tl] = 0; /* end the topic as a 'C' string with \x00 */
+                        char *topic = (char*) pub->buffer+llen+2;
+                        // msgId only present for QOS>0
+                        if ((pub->buffer[0]&0x06) == MQTTQOS1) 
+                        {
+                            msgId = (pub->buffer[llen+3+tl]<<8)+pub->buffer[llen+3+tl+1];
+                            payload = pub->buffer+llen+3+tl+2;
+                            callback(topic,payload,len-llen-3-tl-2);
+
+                            pub->buffer[0] = MQTTPUBACK;
+                            pub->buffer[1] = 2;
+                            pub->buffer[2] = (msgId >> 8);
+                            pub->buffer[3] = (msgId & 0xFF);
+                            _client->write(this->buffer,4);
+                            pub->lastOutActivity = t;
+
+                        } 
+                        else 
+                        {
+                            payload = this->buffer+llen+3+tl;
+                            callback(topic,payload,len-llen-3-tl);
+                        }
+                    }
+                } 
+                else if (type == MQTTPINGREQ) 
+                {
+                    pub->buffer[0] = MQTTPINGRESP;
+                    pub->buffer[1] = 0;
+                    _client->write(this->buffer,2);
+                } 
+                else if (type == MQTTPINGRESP) 
+                {
+                    pub->pingOutstanding = false;
+                }
+            } 
+            else if (!connected()) 
+            {
+                // readPacket has closed the connection
+                return false;
+            }
+        }
+        return true;
+    
+    }
+    return false;
+
+
+
+
+}
 
 //---------------------------------Ende Definition der Funktionen-------------------------------------------------------
