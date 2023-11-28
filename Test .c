@@ -168,11 +168,11 @@ Connect* ConnectConstructor(PubSubClient* src) //setzt Standartwerte
 {
     if(debug)
         printf("Debug: ConnectConstructor()\n");
-   Connect* tmp = (Connect*)malloc(sizeof(Connect));
+   Connect* tmp = (Connect*)calloc(1,sizeof(Connect));
 
     if (tmp != NULL) {
         // Set default values
-        tmp->PSCsrc = src;
+        tmp->PSCsrc = &src;
         // const char tmpid[9] = "Standart";
        // copyString(tmp->id,"Standart");
         tmp->id = "Standart";
@@ -274,7 +274,7 @@ uint16_t getBufferSize(PubSubClient* src) {
 }
 
 PubSubClient* Constructor() {
-	PubSubClient* tmp = (PubSubClient*)malloc(sizeof(PubSubClient));
+	PubSubClient* tmp = (PubSubClient*)calloc(1,sizeof(PubSubClient));
     if (debug)
         printf("Debug: Constructor() PubSubClient initialisiert Werte\n");
 
