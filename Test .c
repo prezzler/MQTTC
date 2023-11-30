@@ -8,6 +8,8 @@
 #include <Windows.h>
 
 bool debug = 1;
+char globalBuff[1500];      //TODO: Char oder uint8_t?
+#define GlobalBuffLen 1500
 
 	#define MQTT_VERSION_3_1      3
 	#define MQTT_VERSION_3_1_1    4
@@ -123,11 +125,11 @@ typedef struct Connect Connect;
 
 
 //---------------------------------Definition der Funktionen-------------------------------------------------------
-void copyString(char *dest, const char *src) {
-    while (*src != '\0') {
-        *dest = *src;
+void copyString(char *dest, const char *pub) {
+    while (*pub != '\0') {
+        *dest = *pub;
         dest++;
-        src++;
+        pub++;
     }
     *dest = '\0'; // Don't forget to null-terminate the destination string
 }
@@ -164,7 +166,7 @@ unsigned long millis() {
     return GetTickCount();
 }
 
-Connect* ConnectConstructor(PubSubClient* src) //setzt Standartwerte
+Connect* ConnectConstructor(PubSubClient* pub) //setzt Standartwerte
 {
     if(debug)
         printf("Debug: ConnectConstructor()\n");
@@ -172,7 +174,7 @@ Connect* ConnectConstructor(PubSubClient* src) //setzt Standartwerte
 
     if (tmp != NULL) {
         // Set default values
-        tmp->PSCsrc = src;
+        tmp->PSCsrc = pub;
         // const char tmpid[9] = "Standart";
        // copyString(tmp->id,"Standart");
         tmp->id = "Standart";
@@ -190,34 +192,34 @@ Connect* ConnectConstructor(PubSubClient* src) //setzt Standartwerte
 
     //_______________________________Beginn-PubSubClient-Funktionen_____________________________________________
 
-//void setServer(PubSubClient* src, IPAddress ip, uint16_t port)
+//void setServer(PubSubClient* pub, IPAddress ip, uint16_t port)
 //{
 //
 //}
 
-// void setServer(PubSubClient* src, uint8_t* ip, uint16_t port)
+// void setServer(PubSubClient* pub, uint8_t* ip, uint16_t port)
 // {
 //     if( ip != NULL && port != NULL){
 //         for(int i = 0; i<4; i++){ // ip size is 4 Byte
-//             src->ip[i] = ip[i];
+//             pub->ip[i] = ip[i];
 //         }
 
-//         src->port = port;
+//         pub->port = port;
 //     }
 // }
 
-// void setServer(PubSubClient* src, const char* domain, uint16_t port)
+// void setServer(PubSubClient* pub, const char* domain, uint16_t port)
 // {
     
 // }
 
-// void setCallback(PubSubClient* src, MQTT_CALLBACK_SIGNATURE callback)
+// void setCallback(PubSubClient* pub, MQTT_CALLBACK_SIGNATURE callback)
 // {
-// 	src->callback = callback;
+// 	pub->callback = callback;
 // }
-// void invokeCallback(PubSubClient* src, char* topic, byte* payload, unsigned int length) {
-// 				if (src->callback != NULL) {
-// 					src->callback(topic, payload, length);
+// void invokeCallback(PubSubClient* pub, char* topic, byte* payload, unsigned int length) {
+// 				if (pub->callback != NULL) {
+// 					pub->callback(topic, payload, length);
 // 				}
 // }
 // das braucht man um die callback funktion zuzuweisen
@@ -225,52 +227,52 @@ Connect* ConnectConstructor(PubSubClient* src) //setzt Standartwerte
 // und diese Information soll dann in invokeCallback(...) als Parameter an die 
 // personalisierte Callback Funktion übergeben werden!
 
-void setClient(PubSubClient* src, Client* client)
+void setClient(PubSubClient* pub, Client* client)
 {
-    if (src != NULL ) { 
-        src->_client = client;
+    if (pub != NULL ) { 
+        pub->_client = client;
     }
 }
 
-// void setStream(PubSubClient* src, FILE* stream)
+// void setStream(PubSubClient* pub, FILE* stream)
 // {
-// 	src->stream = &stream;
+// 	pub->stream = &stream;
 // }
 
-void setKeepAlive(PubSubClient* src, uint16_t keepAlive)
+void setKeepAlive(PubSubClient* pub, uint16_t keepAlive)
 {
-	src->keepAlive = keepAlive;
+	pub->keepAlive = keepAlive;
 }
 
-void setSocketTimeout(PubSubClient* src, uint16_t timeout)
+void setSocketTimeout(PubSubClient* pub, uint16_t timeout)
 {
-	src->socketTimeout = timeout;
+	pub->socketTimeout = timeout;
 }
 
-bool setBufferSize(PubSubClient* src, uint16_t size)
+bool setBufferSize(PubSubClient* pub, uint16_t size)
 {
 	if (size == 0) {
 		// Cannot set it back to 0
 		return false;
 	}
-	if (src->bufferSize == 0) {
-		src->buffer = (uint8_t*)malloc(size);
+	if (pub->bufferSize == 0) {
+		pub->buffer = (uint8_t*)malloc(size);
 	}
 	else {
-		uint8_t* newBuffer = (uint8_t*)realloc(src->buffer, size);
+		uint8_t* newBuffer = (uint8_t*)realloc(pub->buffer, size);
 		if (newBuffer != NULL) {
-			src->buffer = newBuffer;
+			pub->buffer = newBuffer;
 		}
 		else {
 			return false;
 		}
 	}
-	src->bufferSize  = size;
-	return (src->buffer != NULL);
+	pub->bufferSize  = size;
+	return (pub->buffer != NULL);
 }
 
-uint16_t getBufferSize(PubSubClient* src) {
-	return src->bufferSize;
+uint16_t getBufferSize(PubSubClient* pub) {
+	return pub->bufferSize;
 }
 
 PubSubClient* Constructor() {
@@ -296,7 +298,7 @@ PubSubClient* Constructor() {
  // PubSubClient.connected() und Client.connected() 
  // und Client.connect() (mit Domain bzw. IP und Port) muss gemacht werden
 
-bool connected(PubSubClient* src) //TODO: muss richtig implementiert werden
+bool connected(PubSubClient* pub) //TODO: muss richtig implementiert werden
 {
     return true;  
 }
@@ -305,8 +307,17 @@ bool connected(PubSubClient* src) //TODO: muss richtig implementiert werden
 
     //_______________________________Beginn-Client-Funktionen_____________________________________________
 
-
-
+void copyBuffGlobal(const uint8_t* buf, uint16_t len){
+    //Setze globalen Buffer auf 0
+    for(int i = 0; i<GlobalBuffLen;i++){
+        globalBuff[i] = 0;
+    }
+    
+    //Kopiere Paket Buffer in globalen Buffer
+    for(int i = 0; i<len; i++){
+        globalBuff[i] =(char)buf[i];
+    }
+}
 
 bool Client_write(const uint8_t* buf, uint16_t len, uint8_t PacketType) {
     // Hier muss in eine Datei geschrieben werden
@@ -318,6 +329,7 @@ bool Client_write(const uint8_t* buf, uint16_t len, uint8_t PacketType) {
             printBinary(buf[i]);
         }
     }
+    copyBuffGlobal(buf,len);
     if(PacketType == MQTTCONNECT){
         strcpy(filename, "CNN.hex");
     }
@@ -367,11 +379,11 @@ size_t buildHeader(uint8_t header, uint8_t* buf, uint16_t length) {
 }
 
 
-bool write(PubSubClient* src, uint8_t header, uint16_t length) {
+bool write(PubSubClient* pub, uint8_t header, uint16_t length) {
     if(debug)
         printf("Debug: write()\n");
     uint16_t rc;
-    uint8_t hlen = buildHeader(header, src->buffer, length);
+    uint8_t hlen = buildHeader(header, pub->buffer, length);
 
 // #ifdef MQTT_MAX_TRANSFER_SIZE
 //     uint8_t* writeBuf = buf+(MQTT_MAX_HEADER_SIZE-hlen);
@@ -387,8 +399,8 @@ bool write(PubSubClient* src, uint8_t header, uint16_t length) {
 //     }
 //     return result;
 // #else
-    rc = Client_write(src->buffer+(MQTT_MAX_HEADER_SIZE-hlen),length+hlen, header);
-    src->lastOutActivity = millis();
+    rc = Client_write(pub->buffer+(MQTT_MAX_HEADER_SIZE-hlen),length+hlen, header);
+    pub->lastOutActivity = millis();
     return (rc == hlen+length);
 // #endif
 }
@@ -424,12 +436,12 @@ void Client_stop() {
         printf("******Stoppe den Client******\n");
 }
 
-bool checkStringLength(PubSubClient* src, int l, const char* s) {
+bool checkStringLength(PubSubClient* pub, int l, const char* s) {
     if(debug){
         printf("Debug: checkStringLenght()\n");
-        printf("    %d %d %d\n", l, strnlen(s, src->bufferSize), src->bufferSize);
+        printf("    %d %d %d\n", l, strnlen(s, pub->bufferSize), pub->bufferSize);
     }
-    if (l + 2 + strnlen(s, src->bufferSize) > src->bufferSize) {
+    if (l + 2 + strnlen(s, pub->bufferSize) > pub->bufferSize) {
         Client_stop();
         return false;
     }
@@ -437,7 +449,7 @@ bool checkStringLength(PubSubClient* src, int l, const char* s) {
 }
 
 // Dient dazu ein Byte aus der Datei in den Buffer zu schreiben
-bool readByteOfFileIntoBuff(PubSubClient* src, uint16_t* index, FILE* file){
+bool readByteOfFileIntoBuff(PubSubClient* pub, uint16_t* index, FILE* file){
     // eine weitere Client.h Funktion, die dazu dient einen Byte vom network socket zu lesen 
     // gibt normalerweise den gelesenen byte zurück und sons -1
     if(debug)
@@ -452,7 +464,7 @@ bool readByteOfFileIntoBuff(PubSubClient* src, uint16_t* index, FILE* file){
             printf("    Erstes Byte der Datei: ");
             printBinary(buffer);
         }
-        src->buffer[*index] = buffer;
+        pub->buffer[*index] = buffer;
         (*index)++;
         return true; // Return true to indicate successful execution
     }
@@ -460,34 +472,75 @@ bool readByteOfFileIntoBuff(PubSubClient* src, uint16_t* index, FILE* file){
         return false;
 }
 
-uint32_t readPacket(PubSubClient* src, uint8_t* lengthLength,int PacketType ) {
+uint32_t readPacket(PubSubClient* pub, uint8_t* lengthLength,int PacketType ) { //TODO: Problem
     if(debug)
         printf("Debug: readPacket()\n");
+
     uint16_t len = 0;
-        // File pointer
-        FILE* file;
-        const char* filePath;
-        if(PacketType == MQTTCONNACK){
-        // File path (change this to your file's path)
+    // File pointer
+    FILE* file;
+    const char* filePath;
+
+    switch (PacketType) {
+        case MQTTCONNACK:
             filePath = "CONNACK.hex";
-                if(debug)
-                    printf("    Nutze Datei: %s\n", filePath);
-        }
-        else {
-            filePath = "nothing.txt";
-                if(debug)
-                    printf("    Nutze Datei: %s\n", filePath);
-        }
-        // Open file for reading ("r" stands for read mode)
-        file = fopen(filePath, "r");
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
 
-        // Check if the file was opened successfully
-        if (file == NULL) {
-            fprintf(stderr, "   Error opening file %s\n", filePath);
-            return 1; // Return an error code
-        }
+        case MQTTPINGRESP:
+            filePath = "PINGRESP.hex";
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
 
-    if(!readByteOfFileIntoBuff(src, &len, file)) return 0;
+        case MQTTPUBLISH:       //wenn der Client ein Subscriber ist, kriegt er einen Publish vom Broker
+            filePath = "PUBLISH.hex";
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
+
+        case MQTTPUBACK:        // Acknowledges the receipt of a Publish Packet with QoS 1
+            filePath = "PUBACK.hex";
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
+
+        case MQTTPUBREL:        // Antwort von Broker auf Pubrec Paket QoS 2 
+            filePath = "PUBREL.hex";
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
+
+        case MQTTSUBACK:        // Antwort auf Subscribe Paket 
+            filePath = "SUBACK.hex";
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
+
+        case MQTTUNSUBACK:        // Antwort auf Unsubscribe Paket
+            filePath = "UNSUBACK.hex";
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
+
+        default:
+            filePath = "DEFAULTa.txt";
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
+    }
+
+    // Open file for reading ("r" stands for read mode)
+    file = fopen(filePath, "r");
+
+    // Check if the file was opened successfully
+    if (file == NULL) {
+        fprintf(stderr, "   Error opening file %s\n", filePath);
+        return 1; // Return an error code
+    }
+
+    if(!readByteOfFileIntoBuff(pub, &len, file)) return 0;
 
     uint32_t multiplier = 1;
     uint32_t length = 0;
@@ -498,12 +551,12 @@ uint32_t readPacket(PubSubClient* src, uint8_t* lengthLength,int PacketType ) {
     do {
         if (len == 5) {
             // Inconid remaining length encoding - kill the connection
-            src->_state = MQTT_DISCONNECTED;
+            pub->_state = MQTT_DISCONNECTED;
             Client_stop();
             return 0;
         }
         if(fread(&digit, 1, 1, file) == 0) return 0;
-        src->buffer[len++] = digit;
+        pub->buffer[len++] = digit;
         length += (digit & 127) * multiplier;
         multiplier <<=7; //multiplier *= 128
     } while ((digit & 128) != 0);
@@ -512,8 +565,8 @@ uint32_t readPacket(PubSubClient* src, uint8_t* lengthLength,int PacketType ) {
     for (uint32_t i = start;i<length;i++) {
         if(fread(&digit, 1, 1, file) == 0) return 0;
 
-        if (len < src->bufferSize) {
-            src->buffer[len] = digit;
+        if (len < pub->bufferSize) {
+            pub->buffer[len] = digit;
             len++;
         }
     }
@@ -521,24 +574,24 @@ uint32_t readPacket(PubSubClient* src, uint8_t* lengthLength,int PacketType ) {
     return len;
 }
 
-bool connectStart(PubSubClient* src, Connect* con){ 
+bool connectStart(PubSubClient* pub, Connect* con){ 
 if(debug)
         printf("Debug: connectStart() Verbinde...\n");
 //     if (!connected()) {
 //         int result = 0;
-//   //      if(Client_connected(&src->_client)){														// Gehen davon aus dass die Verbindung steht
+//   //      if(Client_connected(&pub->_client)){														// Gehen davon aus dass die Verbindung steht
 //             result = 1;
 //         } else {
-//             if (src->domain != NULL) {
-//  //               result = Client_connectDomain(src,&src->domain, src->port);
+//             if (pub->domain != NULL) {
+//  //               result = Client_connectDomain(pub,&pub->domain, pub->port);
 //             }
 //             else  {
-//   //              result = Client_connectIp(src,&src->ip, src->port);
+//   //              result = Client_connectIp(pub,&pub->ip, pub->port);
 //             }
 //         }
 
 //       //  if (result == 1) {
-            src->nextMsgId = 1;
+            pub->nextMsgId = 1;
             // Leave room in the buffer for header and variable length field
             uint16_t length = MQTT_MAX_HEADER_SIZE; // 5
             unsigned int j;
@@ -551,7 +604,7 @@ if(debug)
 #define MQTT_HEADER_VERSION_LENGTH 7
 #endif
             for (j = 0;j<MQTT_HEADER_VERSION_LENGTH;j++) {
-                src->buffer[length++] = d[j];       // schreiben ab Index 5 das 0x00,0x04,'M','Q','T','T',MQTT_VERSION hin und landen an stelle 12
+                pub->buffer[length++] = d[j];       // schreiben ab Index 5 das 0x00,0x04,'M','Q','T','T',MQTT_VERSION hin und landen an stelle 12
             }
 // Als nächstes werden die Connect Flags (8Bit) gesetzt ---------------
 // Erinnerung:
@@ -582,45 +635,45 @@ if(debug)
                 }
             }
             // die Connect Flags werden als ein 1Byte Element mit an den Buffer gehangen
-            src->buffer[length++] = v;
+            pub->buffer[length++] = v;
 
             // keepAlive wird an den Buffer angefügt. keepAlive ist 16 bit daher obere 8 Bits als erstes und dann untere 8+8=16
-            src->buffer[length++] = ((src->keepAlive) >> 8);
-            src->buffer[length++] = ((src->keepAlive) & 0xFF);
+            pub->buffer[length++] = ((pub->keepAlive) >> 8);
+            pub->buffer[length++] = ((pub->keepAlive) & 0xFF);
 
             // ID Größe wird geprüft und in Buffer hinzugefügt
-            checkStringLength(src, length, con->id); 
-            length = writeString(con->id,src->buffer,length);
+            checkStringLength(pub, length, con->id); 
+            length = writeString(con->id,pub->buffer,length);
             
             // WillTopic wird geprüft und in Buffer hinzugefügt
             if (con->willTopic) {
-                checkStringLength(src,length,con->willTopic);
-                length = writeString(con->willTopic,src->buffer,length);
-                checkStringLength(src,length,con->willMessage);
-                length = writeString(con->willMessage,src->buffer,length);
+                checkStringLength(pub,length,con->willTopic);
+                length = writeString(con->willTopic,pub->buffer,length);
+                checkStringLength(pub,length,con->willMessage);
+                length = writeString(con->willMessage,pub->buffer,length);
             }
 
             // Username und Password wird geprüft und in Buffer hinzugefügt
             if(con->user != NULL) {
-                checkStringLength(src,length,con->user);
-                length = writeString(con->user,src->buffer,length);
+                checkStringLength(pub,length,con->user);
+                length = writeString(con->user,pub->buffer,length);
                 if(con->pass != NULL) {
-                    checkStringLength(src,length,con->pass);
-                    length = writeString(con->pass,src->buffer,length);
+                    checkStringLength(pub,length,con->pass);
+                    length = writeString(con->pass,pub->buffer,length);
                 }
             }
 
-            write(src,MQTTCONNECT,length-MQTT_MAX_HEADER_SIZE);
+            write(pub,MQTTCONNECT,length-MQTT_MAX_HEADER_SIZE);
 
-            src->lastInActivity = src->lastOutActivity = millis();
+            pub->lastInActivity = pub->lastOutActivity = millis();
 
             while (!Client_available()) {    // while (!_client->available())
             // die Schleife wird wiederholt, bis Information vom Client verfügbar ist 
             // wenn der Rückgabewert true ist, dann heißt es dass eine Nachricht angekommen ist   
                 unsigned long t = millis();
                 //Zeit wird gestoppt
-                if (t - src->lastInActivity >= ((int32_t)src->socketTimeout * 1000UL)) {
-                    src->_state = MQTT_CONNECTION_TIMEOUT;
+                if (t - pub->lastInActivity >= ((int32_t)pub->socketTimeout * 1000UL)) {
+                    pub->_state = MQTT_CONNECTION_TIMEOUT;
                     Client_stop();
                     return false;
                 }
@@ -628,49 +681,49 @@ if(debug)
             }
             // weil, die while Schleife verlassen wurde, gehen wir davon aus, dass eine einkommende Nachricht vorliegt
             uint8_t llen;
-            uint32_t len = readPacket(src,&llen,MQTTCONNACK);
+            uint32_t len = readPacket(pub,&llen,MQTTCONNACK);
             if(debug)
                 printf("ReturnCode von readPacket(): Laenge des gelesenen Pakets %d\n", len);
             if (len == 4) { // wenn die Länge des angekommenen Pakets 4 ist, handelt es sich um ein CONACK
                
-                if (src->buffer[3] == 0) {  // letzter Byte eines CONACK ist der RC, wenn der 0 ist --> erfolgreiche Verbindung
+                if (pub->buffer[3] == 0) {  // letzter Byte eines CONACK ist der RC, wenn der 0 ist --> erfolgreiche Verbindung
                     if(debug)
                         printf("CONNACK genehmigt :)\n");
-                    src->lastInActivity = millis();
-                    src->pingOutstanding = false;
-                    src->_state = MQTT_CONNECTED;
+                    pub->lastInActivity = millis();
+                    pub->pingOutstanding = false;
+                    pub->_state = MQTT_CONNECTED;
                     return true;
                 }
                 else {
-                    src->_state = src->buffer[3];   // sonst wird der RC Wert des CONACKS in State geschrieben
+                    pub->_state = pub->buffer[3];   // sonst wird der RC Wert des CONACKS in State geschrieben
                     if(debug)
-                        printf("CONNACK nicht genehmigt :( rc:%b\n", src->buffer[3]);
+                        printf("CONNACK nicht genehmigt :( rc:%b\n", pub->buffer[3]);
                 }
             }
             Client_stop();
 //        }
 //        else {
-//            src->_state = MQTT_CONNECT_FAILED;
+//            pub->_state = MQTT_CONNECT_FAILED;
 //        }
 //        return false;
 //    }
     return true;
 }
 
-void disconnect(PubSubClient* src, Connect* Con) {
+void disconnect(PubSubClient* pub, Connect* Con) {
 	if(debug) 
         printf("Debug: disconnect()\n");
-    src->buffer[0] = MQTTDISCONNECT;
-	src->buffer[1] = 0;
+    pub->buffer[0] = MQTTDISCONNECT;
+	pub->buffer[1] = 0;
 	//_client->write(this->buffer, 2);
-    Client_write(src->buffer,2,MQTTDISCONNECT);
-	src->_state = MQTT_DISCONNECTED;
+    Client_write(pub->buffer,2,MQTTDISCONNECT);
+	pub->_state = MQTT_DISCONNECTED;
 	//_client->flush(); muss von Rossendorf implementiert werden
 	Client_stop();
-	src->lastInActivity = src->lastOutActivity = millis(); //millis ist f�r arduino, kann man aber auch mit time.h bib realisieren
+	pub->lastInActivity = pub->lastOutActivity = millis(); //millis ist f�r arduino, kann man aber auch mit time.h bib realisieren
     if(debug)
         printf("Gebe Speicher Frei\n");
-    free(src);
+    free(pub);
     free(Con);
 }
 bool Client_available()
@@ -681,7 +734,7 @@ bool Client_available()
 //___________________Baustelle______________
 
 bool loop(PubSubClient* pub, Connect con) {
-    if (1) { //eigentlich connected, aber haben wir nicht also true
+    if (connected(pub)) { //eigentlich connected(), aber haben wir nicht also true
         unsigned long t = millis();
         if ((t - pub->lastInActivity > pub->keepAlive*1000UL) || (t - pub->lastOutActivity > pub->keepAlive*1000UL)) {
             if (pub->pingOutstanding) {
@@ -691,7 +744,7 @@ bool loop(PubSubClient* pub, Connect con) {
             } else {
                 pub->buffer[0] = MQTTPINGREQ;
                 pub->buffer[1] = 0;
-                //Client->write(this->buffer,2); //TODO Clientwrite funktion parameter
+                Client_write(pub->buffer,2,MQTTPINGREQ); 
                 pub->lastOutActivity = t;
                 pub->lastInActivity = t;
                 pub->pingOutstanding = true;
@@ -700,7 +753,6 @@ bool loop(PubSubClient* pub, Connect con) {
         if (Client_available()) { //eigentlich _client-> available(), pseudo funktion wurde auf true gesetzt
             uint8_t llen;
             uint16_t len = readPacket(pub,&llen,MQTTCONNACK); //TODO: platzhalter für zeile darunter, damit Fehlermeldungen weg sind
-            //uint16_t len = readPacket(&llen); TODO: Parameterübergabe verändern
             uint16_t msgId = 0;
             uint8_t *payload;
             if (len > 0) {
