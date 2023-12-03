@@ -11,6 +11,10 @@ bool debug = 1;
 char globalBuff[1500];      //TODO: Char oder uint8_t?
 #define GlobalBuffLen 1500
 
+#define RANDOM 4242
+
+typedef void (*MQTT_CALLBACK_SIGNATURE)(char*, uint8_t*, unsigned int);
+
 	#define MQTT_VERSION_3_1      3
 	#define MQTT_VERSION_3_1_1    4
 
@@ -96,7 +100,7 @@ struct PubSubClient {
     unsigned long lastOutActivity;
     unsigned long lastInActivity;
     bool pingOutstanding;
-  //  MQTT_CALLBACK_SIGNATURE callback;
+    MQTT_CALLBACK_SIGNATURE callback;
 
     //uint8_t ip; // geht nicht da ipv4 Addressen aus 4 8Bit Werten besteht!
     uint8_t ip[4];
@@ -213,10 +217,12 @@ Connect* ConnectConstructor(PubSubClient* pub) //setzt Standartwerte
     
 // }
 
-// void setCallback(PubSubClient* pub, MQTT_CALLBACK_SIGNATURE callback)
-// {
-// 	pub->callback = callback;
-// }
+void setCallback(PubSubClient* pub, MQTT_CALLBACK_SIGNATURE callback)
+{
+    if(debug)
+        printf("Debug: setCallback()\n");
+	pub->callback = callback;
+}
 // void invokeCallback(PubSubClient* pub, char* topic, byte* payload, unsigned int length) {
 // 				if (pub->callback != NULL) {
 // 					pub->callback(topic, payload, length);
@@ -288,6 +294,7 @@ PubSubClient* Constructor() {
         setKeepAlive(tmp, MQTT_KEEPALIVE);
         setSocketTimeout(tmp, MQTT_SOCKET_TIMEOUT);
         tmp->port = 0;
+        tmp->callback = NULL;
     }
 
     return tmp;
@@ -302,7 +309,6 @@ bool connected(PubSubClient* pub) //TODO: muss richtig implementiert werden
 {
     return true;  
 }
-//TODO: callbackfunktion muss implementiert werden
     //_______________________________Ende-PubSubClient-Funktionen__________________________________________________
 
     //_______________________________Beginn-Client-Funktionen_____________________________________________
@@ -335,6 +341,12 @@ bool Client_write(const uint8_t* buf, uint16_t len, uint8_t PacketType) {
     }
     if(PacketType == MQTTDISCONNECT){
         strcpy(filename, "DSC.hex");
+    }
+    if(PacketType == MQTTPUBACK){
+        strcpy(filename, "PUBACK.hex");
+    }
+    if(PacketType == MQTTPINGREQ){
+        strcpy(filename, "PINGREQ.hex");
     }
     FILE* file = fopen(filename , "wb");
     if (file == NULL) {
@@ -523,7 +535,13 @@ uint32_t readPacket(PubSubClient* pub, uint8_t* lengthLength,int PacketType ) { 
             if (debug)
                 printf("    Nutze Datei: %s\n", filePath);
             break;
-
+        
+        case RANDOM:        // Antwort auf Unsubscribe Paket
+            filePath = "UNSUBACK.hex";
+            if (debug)
+                printf("    Nutze Datei: %s\n", filePath);
+            break;
+        
         default:
             filePath = "DEFAULTa.txt";
             if (debug)
@@ -726,18 +744,17 @@ void disconnect(PubSubClient* pub, Connect* Con) {
     free(pub);
     free(Con);
 }
-bool Client_available()
-{
-    return true;
-}
 
 //___________________Baustelle______________
 
-bool loop(PubSubClient* pub, Connect con) {
-    if (connected(pub)) { //eigentlich connected(), aber haben wir nicht also true
+bool loop(PubSubClient* pub) {
+    if(debug)
+        printf("Debug: loop() \n");
+    if (connected(pub)) { 
         unsigned long t = millis();
+        // wenn ein längerer Zeitraum als KeepAlive erlaubt vergeht ohne dass es eingehende oder ausgehende Aktivität gab
         if ((t - pub->lastInActivity > pub->keepAlive*1000UL) || (t - pub->lastOutActivity > pub->keepAlive*1000UL)) {
-            if (pub->pingOutstanding) {
+            if (pub->pingOutstanding) { //wenn ein Ping schon losgeschickt wurde und noch keine Antwort kam
                 pub->_state = MQTT_CONNECTION_TIMEOUT;
                 Client_stop();//_client->stop();
                 return false;
@@ -752,42 +769,44 @@ bool loop(PubSubClient* pub, Connect con) {
         }
         if (Client_available()) { //eigentlich _client-> available(), pseudo funktion wurde auf true gesetzt
             uint8_t llen;
-            uint16_t len = readPacket(pub,&llen,MQTTCONNACK); //TODO: platzhalter für zeile darunter, damit Fehlermeldungen weg sind
+            uint16_t len = readPacket(pub,&llen,MQTTPINGRESP); //TODO: Lösung für Auswahl des Pakets das jz ankommt / erwartet wird
             uint16_t msgId = 0;
             uint8_t *payload;
             if (len > 0) {
                 pub->lastInActivity = t;
                 uint8_t type = pub->buffer[0]&0xF0;
+                
                 if (type == MQTTPUBLISH) {
-                    if (1) { //TODO: Eigentlich: "if(callback)" callback?? define muss angeguckt werden
+                    if (pub->callback) { //wenn eine callback Funktion zugewiesen wurde
                         uint16_t tl = (pub->buffer[llen+1]<<8)+pub->buffer[llen+2]; /* topic length in bytes */
                         memmove(pub->buffer+llen+2,pub->buffer+llen+3,tl); /* move topic inside buffer 1 byte to front */
                         pub->buffer[llen+2+tl] = 0; /* end the topic as a 'C' string with \x00 */
                         char *topic = (char*) pub->buffer+llen+2;
+                        
                         // msgId only present for QOS>0
                         if ((pub->buffer[0]&0x06) == MQTTQOS1) {
-                            msgId = (pub->buffer[llen+3+tl]<<8)+pub->buffer[llen+3+tl+1];
+                            msgId = (pub->buffer[llen+3+tl]<<8)+pub->buffer[llen+3+tl+1];   //msgId wir aus dem Pub Paket gelesen - 16 bit daher hohe und niedrige Zahl
                             payload = pub->buffer+llen+3+tl+2;
-                            callback(topic,payload,len-llen-3-tl-2);
+                            pub->callback(topic,payload,len-llen-3-tl-2);
 
                             pub->buffer[0] = MQTTPUBACK;
                             pub->buffer[1] = 2;
                             pub->buffer[2] = (msgId >> 8);
                             pub->buffer[3] = (msgId & 0xFF);
                             //Client_write(pub->buffer,4);
-                            Client_write(pub->buffer,2,MQTTDISCONNECT); //TODO: Platzhalter
+                            Client_write(pub->buffer,4,MQTTPUBACK); 
                             pub->lastOutActivity = t;
 
                         } else {
                             payload = pub->buffer+llen+3+tl;
-                            callback(topic,payload,len-llen-3-tl);
+                            pub->callback(topic,payload,len-llen-3-tl);
                         }
                     }
+
                 } else if (type == MQTTPINGREQ) {
                     pub->buffer[0] = MQTTPINGRESP;
                     pub->buffer[1] = 0;
-                    Client_write(pub->buffer,2,MQTTDISCONNECT); //TODO: nur ein Platzhalter
-                    //_client->write(pub->buffer,2); TODO: genaue deklarierung muss vorhanden sein
+                    Client_write(pub->buffer,2,MQTTPINGRESP); 
                 } else if (type == MQTTPINGRESP) {
                     pub->pingOutstanding = false;
                 }
@@ -803,7 +822,9 @@ bool loop(PubSubClient* pub, Connect con) {
 
 //___________________Baustelle-Ende___________
 
-
+void meineCallback(char* topic, uint8_t* payload, unsigned int length){
+    printf("The string is: %s\n", topic);
+}
 
 int main(void) {    
     printf("START\n");
@@ -818,6 +839,20 @@ int main(void) {
         } else {
             printf("ConnectStart() fehlgeschlagen\n");
         }
+    } else{
+        connectStart(Client,Con);
+    }
+
+    setCallback(Client,meineCallback);
+
+
+    if(debug){
+        if (loop(Client))
+            printf("Loop() erfolgreich\n");
+        else 
+            printf("Loop() fehlsgeschlagen\n");
+    } else {
+        loop(Client); //erstmal nur mit ping
     }
     disconnect(Client,Con);
     printf("ENDE");
