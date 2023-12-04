@@ -8,8 +8,11 @@
 #include <Windows.h>
 
 bool debug = 1;
-char globalBuff[1500];      //TODO: Char oder uint8_t?
-#define GlobalBuffLen 1500
+char globalBuffOUT[1500];      //TODO: Char oder uint8_t?
+#define GlobalBuffOUTLen 1500
+
+char globalBuffIN[1500];      //TODO: Char oder uint8_t?
+#define GlobalBuffINLen 1500
 
 #define RANDOM 4242
 
@@ -313,50 +316,34 @@ bool connected(PubSubClient* pub) //TODO: muss richtig implementiert werden
 
     //_______________________________Beginn-Client-Funktionen_____________________________________________
 
-void copyBuffGlobal(const uint8_t* buf, uint16_t len){
+void copyBuffGlobal(const uint8_t* buf, uint16_t len,char* global){
     //Setze globalen Buffer auf 0
-    for(int i = 0; i<GlobalBuffLen;i++){
-        globalBuff[i] = 0;
+    for(int i = 0; i<GlobalBuffOUTLen;i++){
+        global[i] = 0;
     }
     
     //Kopiere Paket Buffer in globalen Buffer
     for(int i = 0; i<len; i++){
-        globalBuff[i] =(char)buf[i];
+        global[i] =(char)buf[i];
     }
+}
+
+bool getByteFromGlobal(uint8_t digit){
+    
+    globalBuffIN[]
 }
 
 bool Client_write(const uint8_t* buf, uint16_t len, uint8_t PacketType) {
     // Hier muss in eine Datei geschrieben werden
     char* filename = (char*)malloc(8*sizeof(char));
     if(debug){
-        printf("Debug: Client_write() Schreibe in neue Datei\n");
+        printf("Debug: Client_write() Schreibe in globalen OutBuffer\n");
         printf("    Inhalt des Buffers: \n");
         for (int i = 0; i < len; i++) {
             printBinary(buf[i]);
         }
     }
-    copyBuffGlobal(buf,len);
-    if(PacketType == MQTTCONNECT){
-        strcpy(filename, "CNN.hex");
-    }
-    if(PacketType == MQTTDISCONNECT){
-        strcpy(filename, "DSC.hex");
-    }
-    if(PacketType == MQTTPUBACK){
-        strcpy(filename, "PUBACK.hex");
-    }
-    if(PacketType == MQTTPINGREQ){
-        strcpy(filename, "PINGREQ.hex");
-    }
-    FILE* file = fopen(filename , "wb");
-    if (file == NULL) {
-        perror("    Error opening file");
-        return 1;
-    }
-    fwrite(buf, sizeof(unsigned char), len, file);
-    fclose(file);
-    /////////////////////////////////////////////////
-
+    copyBuffGlobal(buf,len,globalBuffOUT);
     printf("\n");
     return true;
 }
@@ -493,61 +480,7 @@ uint32_t readPacket(PubSubClient* pub, uint8_t* lengthLength,int PacketType ) { 
     FILE* file;
     const char* filePath;
 
-    switch (PacketType) {
-        case MQTTCONNACK:
-            filePath = "CONNACK.hex";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
 
-        case MQTTPINGRESP:
-            filePath = "PINGRESP.hex";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
-
-        case MQTTPUBLISH:       //wenn der Client ein Subscriber ist, kriegt er einen Publish vom Broker
-            filePath = "PUBLISH.hex";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
-
-        case MQTTPUBACK:        // Acknowledges the receipt of a Publish Packet with QoS 1
-            filePath = "PUBACK.hex";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
-
-        case MQTTPUBREL:        // Antwort von Broker auf Pubrec Paket QoS 2 
-            filePath = "PUBREL.hex";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
-
-        case MQTTSUBACK:        // Antwort auf Subscribe Paket 
-            filePath = "SUBACK.hex";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
-
-        case MQTTUNSUBACK:        // Antwort auf Unsubscribe Paket
-            filePath = "UNSUBACK.hex";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
-        
-        case RANDOM:        // Antwort auf Unsubscribe Paket
-            filePath = "UNSUBACK.hex";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
-        
-        default:
-            filePath = "DEFAULTa.txt";
-            if (debug)
-                printf("    Nutze Datei: %s\n", filePath);
-            break;
-    }
 
     // Open file for reading ("r" stands for read mode)
     file = fopen(filePath, "r");
@@ -565,15 +498,16 @@ uint32_t readPacket(PubSubClient* pub, uint8_t* lengthLength,int PacketType ) { 
     uint8_t digit = 0;
     uint16_t skip = 0;
     uint32_t start = 0;
-
+    
+    // liest die Remaining Length des MQTTPaktes, max 4 Bytes
     do {
         if (len == 5) {
-            // Inconid remaining length encoding - kill the connection
+            // Invalid remaining length encoding - kill the connection
             pub->_state = MQTT_DISCONNECTED;
             Client_stop();
             return 0;
         }
-        if(fread(&digit, 1, 1, file) == 0) return 0;
+        if(!getByteFromGlobal(&digit)) return 0;
         pub->buffer[len++] = digit;
         length += (digit & 127) * multiplier;
         multiplier <<=7; //multiplier *= 128
