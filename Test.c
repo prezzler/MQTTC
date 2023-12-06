@@ -304,12 +304,12 @@ PubSubClient* Constructor() {
 }
 
 
- // TODO:
- // PubSubClient.connected() und Client.connected() 
- // und Client.connect() (mit Domain bzw. IP und Port) muss gemacht werden
 
-bool connected(PubSubClient* pub) //TODO: muss richtig implementiert werden
+ // und Client.connect() (mit Domain bzw. IP und Port) muss gemacht werden
+bool connected(PubSubClient* pub)
 {
+    //TODO: Muss implementiert werden
+    //wenn _client->connected(); true dann setzt state auf MQTT_CONNECTED sonst MQTT_CONNECTION_LOST, flusht und stoppt client
     return true;  
 }
     //_______________________________Ende-PubSubClient-Funktionen__________________________________________________
@@ -328,27 +328,25 @@ void copyBuffGlobal(const uint8_t* buf, uint16_t len,char* global){
     }
 }
 
-bool getByteFromGlobal(uint8_t digit){
-    
-    globalBuffIN[]
+bool readbyte(uint8_t * result){
+    //TODO: Muss implementiert werden
 }
 
-bool Client_write(const uint8_t* buf, uint16_t len, uint8_t PacketType) {
-    // Hier muss in eine Datei geschrieben werden
-    char* filename = (char*)malloc(8*sizeof(char));
-    if(debug){
-        printf("Debug: Client_write() Schreibe in globalen OutBuffer\n");
-        printf("    Inhalt des Buffers: \n");
-        for (int i = 0; i < len; i++) {
-            printBinary(buf[i]);
-        }
-    }
-    copyBuffGlobal(buf,len,globalBuffOUT);
-    printf("\n");
-    return true;
+bool Client_write(const uint8_t* buf, uint16_t len) {
+    //TODO: Muss implementiert werden
 }
 
+bool Client_connected(){
+    //TODO: Muss implementiert werden
+}
 
+int Client_connectDomain(PubSubClient* pub,const char * domain, int port){
+    //TODO: Muss implementiert werden
+}
+
+int Client_connectIP(PubSubClient* pub,uint8_t* ip, int port){
+    //TODO: Muss implementiert werden
+}
 
 // Header wird in die ersten 4 Stellen des Buffers geschrieben 
 size_t buildHeader(uint8_t header, uint8_t* buf, uint16_t length) {
@@ -423,10 +421,10 @@ uint16_t writeString(const char* string, uint8_t* buf, uint16_t pos) {
 
 int Client_available(){ // hier wird eig im echten geprüft ob vom Socket neue Daten vorliegen 
 // der return-wert zeigt normalerweise die Anzahl an Bytes die dem Socket zur verfügung stehen (bzw. wieviele Bytes angekommen sind)
-
+    //TODO: Muss implementiert werden
 // aus Testgründen verändern wir diese Funktion, dass sie immer available sagt
 // da bisher immer auf einen Connect ein ConnectAck folgt 
-return 1;
+    return rand() % 2 == 0; // alt. srand(time(NULL))
 }
 
 void Client_stop() {
@@ -448,58 +446,24 @@ bool checkStringLength(PubSubClient* pub, int l, const char* s) {
 }
 
 // Dient dazu ein Byte aus der Datei in den Buffer zu schreiben
-bool readByteOfFileIntoBuff(PubSubClient* pub, uint16_t* index, FILE* file){
+uint8_t readByteIntoBuff(PubSubClient* pub, uint16_t* index){
     // eine weitere Client.h Funktion, die dazu dient einen Byte vom network socket zu lesen 
-    // gibt normalerweise den gelesenen byte zurück und sons -1
-    if(debug)
-        printf("Debug: readByteOfFileIntoBuff()\n");
-    // Hier muss in eine Datei geschrieben werden
+    // TODO: Muss implementiert werden
+  }
 
-        // Read and print the contents of the file
-        char buffer=0; // Buffer to store read data
-
-    if(fread(&buffer, 1, 1, file) != 0){
-        if(debug){
-            printf("    Erstes Byte der Datei: ");
-            printBinary(buffer);
-        }
-        pub->buffer[*index] = buffer;
-        (*index)++;
-        return true; // Return true to indicate successful execution
-    }
-    else 
-        return false;
-}
-
-uint32_t readPacket(PubSubClient* pub, uint8_t* lengthLength,int PacketType ) { //TODO: Problem
+uint32_t readPacket(PubSubClient* pub, uint8_t* lengthLength ) { 
     if(debug)
         printf("Debug: readPacket()\n");
-
+    //TODO: Muss implementiert werden
     uint16_t len = 0;
-    // File pointer
-    FILE* file;
-    const char* filePath;
-
-
-
-    // Open file for reading ("r" stands for read mode)
-    file = fopen(filePath, "r");
-
-    // Check if the file was opened successfully
-    if (file == NULL) {
-        fprintf(stderr, "   Error opening file %s\n", filePath);
-        return 1; // Return an error code
-    }
-
-    if(!readByteOfFileIntoBuff(pub, &len, file)) return 0;
-
+    if(!readByteIntoBuff(pub->buffer, &len)) return 0;
+    bool isPublish = (pub->buffer[0]&0xF0) == MQTTPUBLISH;
     uint32_t multiplier = 1;
     uint32_t length = 0;
     uint8_t digit = 0;
     uint16_t skip = 0;
     uint32_t start = 0;
-    
-    // liest die Remaining Length des MQTTPaktes, max 4 Bytes
+
     do {
         if (len == 5) {
             // Invalid remaining length encoding - kill the connection
@@ -507,42 +471,63 @@ uint32_t readPacket(PubSubClient* pub, uint8_t* lengthLength,int PacketType ) { 
             Client_stop();
             return 0;
         }
-        if(!getByteFromGlobal(&digit)) return 0;
+        if(!readByte(&digit)) return 0;
         pub->buffer[len++] = digit;
         length += (digit & 127) * multiplier;
         multiplier <<=7; //multiplier *= 128
     } while ((digit & 128) != 0);
     *lengthLength = len-1;
 
+    // if (isPublish) {
+    //     // Read in topic length to calculate bytes to skip over for Stream writing
+    //     if(!readByte(this->buffer, &len)) return 0;
+    //     if(!readByte(this->buffer, &len)) return 0;
+    //     skip = (this->buffer[*lengthLength+1]<<8)+this->buffer[*lengthLength+2];
+    //     start = 2;
+    //     if (this->buffer[0]&MQTTQOS1) {
+    //         // skip message id
+    //         skip += 2;
+    //     }
+    // }
+    uint32_t idx = len;
+
     for (uint32_t i = start;i<length;i++) {
-        if(fread(&digit, 1, 1, file) == 0) return 0;
+        if(!readByte(&digit)) return 0;
+        // if (pub->stream) {
+        //     if (isPublish && idx-*lengthLength-2>skip) {
+        //         this->stream->write(digit);
+        //     }
+        // }
 
         if (len < pub->bufferSize) {
             pub->buffer[len] = digit;
             len++;
         }
+        idx++;
     }
-    
+
+    // if (!this->stream && idx > this->bufferSize) {
+    //     len = 0; // This will cause the packet to be ignored.
+    // }
     return len;
 }
-
 bool connectStart(PubSubClient* pub, Connect* con){ 
 if(debug)
         printf("Debug: connectStart() Verbinde...\n");
-//     if (!connected()) {
-//         int result = 0;
-//   //      if(Client_connected(&pub->_client)){														// Gehen davon aus dass die Verbindung steht
-//             result = 1;
-//         } else {
-//             if (pub->domain != NULL) {
-//  //               result = Client_connectDomain(pub,&pub->domain, pub->port);
-//             }
-//             else  {
-//   //              result = Client_connectIp(pub,&pub->ip, pub->port);
-//             }
-//         }
+    if (!connected(pub)) {
+        int result = 0;
+       if(Client_connected(&pub->_client)){														// Gehen davon aus dass die Verbindung steht
+            result = 1;
+        } else {
+            if (pub->domain != NULL) {
+               result = Client_connectDomain(pub,&pub->domain, pub->port);
+            }
+            else  {
+               result = Client_connectIp(pub,&pub->ip, pub->port);
+            }
+        }
 
-//       //  if (result == 1) {
+       if (result == 1) {
             pub->nextMsgId = 1;
             // Leave room in the buffer for header and variable length field
             uint16_t length = MQTT_MAX_HEADER_SIZE; // 5
@@ -653,16 +638,16 @@ if(debug)
                 }
             }
             Client_stop();
-//        }
-//        else {
-//            pub->_state = MQTT_CONNECT_FAILED;
-//        }
-//        return false;
-//    }
+       }
+       else {
+           pub->_state = MQTT_CONNECT_FAILED;
+       }
+       return false;
+       }
     return true;
 }
 
-void disconnect(PubSubClient* pub, Connect* Con) {
+void disconnect(PubSubClient* pub, Connect* Con){
 	if(debug) 
         printf("Debug: disconnect()\n");
     pub->buffer[0] = MQTTDISCONNECT;
@@ -703,7 +688,7 @@ bool loop(PubSubClient* pub) {
         }
         if (Client_available()) { //eigentlich _client-> available(), pseudo funktion wurde auf true gesetzt
             uint8_t llen;
-            uint16_t len = readPacket(pub,&llen,MQTTPINGRESP); //TODO: Lösung für Auswahl des Pakets das jz ankommt / erwartet wird
+            uint16_t len = readPacket(pub,&llen); //TODO: Lösung für Auswahl des Pakets das jz ankommt / erwartet wird
             uint16_t msgId = 0;
             uint8_t *payload;
             if (len > 0) {
@@ -727,7 +712,7 @@ bool loop(PubSubClient* pub) {
                             pub->buffer[1] = 2;
                             pub->buffer[2] = (msgId >> 8);
                             pub->buffer[3] = (msgId & 0xFF);
-                            //Client_write(pub->buffer,4);
+    
                             Client_write(pub->buffer,4,MQTTPUBACK); 
                             pub->lastOutActivity = t;
 
@@ -741,6 +726,7 @@ bool loop(PubSubClient* pub) {
                     pub->buffer[0] = MQTTPINGRESP;
                     pub->buffer[1] = 0;
                     Client_write(pub->buffer,2,MQTTPINGRESP); 
+                    pub->lastOutActivity = millis();
                 } else if (type == MQTTPINGRESP) {
                     pub->pingOutstanding = false;
                 }
@@ -786,7 +772,7 @@ int main(void) {
         else 
             printf("Loop() fehlsgeschlagen\n");
     } else {
-        loop(Client); //erstmal nur mit ping
+        loop(Client);
     }
     disconnect(Client,Con);
     printf("ENDE");
