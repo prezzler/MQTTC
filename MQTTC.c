@@ -1,61 +1,63 @@
-#include "MQTTC.h"
 
+#include "fwf_defs.h"
+#include "fwf_typ_defines.h"
 
+#include "fwf_api_com.h"          	// FWF_COM_CMD MULTICAST_JOIN_LEAVE_STATUS
+#include "fwf_api_flash.h"          // CONTROLLER_NAME
+#include "fwf_dhcp.h"				// DHCP_STATE
+#include "fwf_uc_status.h"
 
-//int main(){
-//	//PubSubClient *original = Constructor();
-//	return 0;
-//}
+#include "mqttc.h"
+
+//#if USE_MQTT_SERVER
 
 //---------------------------------Definition der Funktionen-------------------------------------------------------
 
-
-bool checkStringLength(PubSubClient* src, int l, const char* s) {
-    if (l + 2 + strnlen(s, src->bufferSize) > src->bufferSize) {
-        Client_stop(&src->_client);
-        return false;
+char checkStringLength(PubSubClient* src, int len, const char* s) {
+    if (len + 2 + strnlen(s, src->bufferSize) > src->bufferSize) {
+        Client_stop(src->_client);
+        return 0;
     }
-    return true;
+    return 1;
 }
 
-unsigned long millis() {    // nicht die Beste Lösung, da hier keine präzise Zeit gezählt sondern CPU Clocks pro Sekunde
-    return (unsigned long)(clock() * 1000 / CLOCKS_PER_SEC);
-    // clock() gibt den Wert für die Anzahl an Ticks der CPU seit Start des Programms
+UINT32 millis() {    // Millisekunden seit POR
+    return uC.timer_1ms;
 }
 
-Connect* ConnectKonstruktor(PubSubClient* src) //setzt Standartwerte
+MqttConnect* MqttConnectKonstruktor(PubSubClient* src) //setzt Standartwerte
 {
-    Connect tmp;
-    tmp.PSCsrc = &src;
-    tmp.id = NULL;
-    tmp.pass = NULL;
-    tmp.user = NULL;
-    tmp.willMessage = NULL;
-    tmp.willQos = NULL;
-    tmp.willRetain = NULL;
-    tmp.willTopic = NULL;
+static  MqttConnect tmpConnect;
+    tmpConnect.PSCsrc 		= src;
+    tmpConnect.id 			= NULL;
+    tmpConnect.pass 		= NULL;
+    tmpConnect.user 		= NULL;
+    tmpConnect.willMessage 	= NULL;
+    tmpConnect.willQos 		= MQTTQOS0; // Ka
+    tmpConnect.willRetain 	= NULL;
+    tmpConnect.willTopic 	= NULL;
 
-    return &tmp;
+    return &tmpConnect;
 }
 
     //_______________________________Beginn-PubSubClient-Funktionen_____________________________________________
-
+#if 0
 //void setServer(PubSubClient* src, IPAddress ip, uint16_t port)
 //{
 //
 //}
 
-void setServer(PubSubClient* src, uint8_t* ip, uint16_t port)
-{
+void setServer(PubSubClient* src, uint8_t* ip, uint16_t port) {
     if( ip != NULL && port != NULL){
         for(int i = 0; i<4; i++){ // ip size is 4 Byte
             src->ip[i] = ip[i];
         }
-
         src->port = port;
     }
 }
+#endif
 
+#if 0
 // void setServer(PubSubClient* src, const char* domain, uint16_t port)
 // {
     
@@ -73,7 +75,8 @@ void setCallback(PubSubClient* src, MQTT_CALLBACK_SIGNATURE callback)
 // das braucht man um die callback funktion zuzuweisen
 // aber eig soll das ja automatisch passieren, wenn eine Nachricht ankommt
 // und diese Information soll dann in invokeCallback(...) als Parameter an die 
-// personalisierte Callback Funktion übergeben werden!
+// personalisierte Callback Funktion uebergeben werden!
+#endif
 
 void setClient(PubSubClient* src, Client* client)
 {
@@ -81,11 +84,12 @@ void setClient(PubSubClient* src, Client* client)
         src->_client = client;
     }
 }
-
+#if 0
 void setStream(PubSubClient* src, FILE* stream)
 {
 	src->stream = &stream;
 }
+#endif
 
 void setKeepAlive(PubSubClient* src, uint16_t keepAlive)
 {
@@ -97,7 +101,7 @@ void setSocketTimeout(PubSubClient* src, uint16_t timeout)
 	src->socketTimeout = timeout;
 }
 
-bool setBufferSize(PubSubClient* src, uint16_t size)
+char setBufferSize(PubSubClient* src, uint16_t size)
 {
 	if (size == 0) {
 		// Cannot set it back to 0
@@ -123,27 +127,27 @@ uint16_t getBufferSize(PubSubClient* src) {
 	return src->bufferSize;
 }
 
-PubSubClient* Constructor() {
-	PubSubClient tmp;
-	tmp._state = MQTT_DISCONNECTED;
-	//tmp._client = NULL;
-    setClient(&tmp, NULL);
-	tmp.stream = NULL;
-	setCallback(&tmp,NULL);
-	tmp.bufferSize = 0;
-	setBufferSize(&tmp, MQTT_MAX_PACKET_SIZE);
-	setKeepAlive(&tmp, MQTT_KEEPALIVE);
-	setSocketTimeout(&tmp, MQTT_SOCKET_TIMEOUT);
+PubSubClient* PubSubConstructor() {
+static	PubSubClient tmpPubSubClient;
+	tmpPubSubClient._state = MQTT_DISCONNECTED;
+	//tmpPubSubClient._client = NULL;
+    setClient(&tmpPubSubClient, NULL);
+	tmpPubSubClient.stream = NULL;
+	//setCallback(&tmpPubSubClient, NULL);
+	tmpPubSubClient.bufferSize = 0;
+	setBufferSize(&tmpPubSubClient, MQTT_MAX_PACKET_SIZE);
+	setKeepAlive (&tmpPubSubClient, MQTT_KEEPALIVE);
+	setSocketTimeout(&tmpPubSubClient, MQTT_SOCKET_TIMEOUT);
 
-	return &tmp;
+	return &tmpPubSubClient;
 }
 
  // TODO:
  // PubSubClient.connected() und Client.connected() 
  // und Client.connect() (mit Domain bzw. IP und Port) muss gemacht werden
-bool connectStart(PubSubClient* src, Connect* con){ 
+char connectStart(PubSubClient* src, MqttConnect* con){
+int result = 0;
     if (!connected()) {
-        int result = 0;
   //      if(Client_connected(&src->_client)){
             result = 1;
         } else {
@@ -202,29 +206,29 @@ bool connectStart(PubSubClient* src, Connect* con){
             // die Connect Flags werden als ein 1Byte Element mit an den Buffer gehangen
             src->buffer[length++] = v;
 
-            // keepAlive wird an den Buffer angefügt. keepAlive ist 16 bit daher obere 8 Bits als erstes und dann untere 8+8=16
+            // keepAlive wird an den Buffer angefuegt. keepAlive ist 16 bit daher obere 8 Bits als erstes und dann untere 8+8=16
             src->buffer[length++] = ((src->keepAlive) >> 8);
             src->buffer[length++] = ((src->keepAlive) & 0xFF);
 
-            // ID Größe wird geprüft und in Buffer hinzugefügt
-            checkStringLength(src, length, &con->id); //bei &con->id ist es wichtig die Adresse also mit & weiterzugeben, da con->id
-            length = writeString(&con->id,&src->buffer,length);
+            // ID Größe wird geprueft und in Buffer hinzugefuegt
+            checkStringLength(src, length, con->id); 	// bei &con->id ist es wichtig die Adresse also mit & weiterzugeben, da con->id
+            length = writeString( con->id, src->buffer,length);
             
-            // WillTopic wird geprüft und in Buffer hinzugefügt
+            // WillTopic wird geprueft und in Buffer hinzugefuegt
             if (con->willTopic) {
-                checkStringLength(src,length,&con->willTopic);
-                length = writeString(&con->willTopic,src->buffer,length);
-                checkStringLength(src,length,&con->willMessage);
-                length = writeString(&con->willMessage,src->buffer,length);
+                checkStringLength(src,length,con->willTopic);
+                length = writeString(con->willTopic, src->buffer,length);
+                checkStringLength(src,length, con->willMessage);
+                length = writeString(con->willMessage, src->buffer,length);
             }
 
-            // Username und Password wird geprüft und in Buffer hinzugefügt
+            // Username und Password wird geprueft und in Buffer hinzugefuegt
             if(con->user != NULL) {
-                checkStringLength(src,length,&con->user);
-                length = writeString(&con->user,&src->buffer,length);
+                checkStringLength(src, length, con->user);
+                length = writeString( con->user, src->buffer,length);
                 if(con->pass != NULL) {
-                    checkStringLength(src,length,&con->pass);
-                    length = writeString(&con->pass,&src->buffer,length);
+                    checkStringLength(src,length, con->pass);
+                    length = writeString( con->pass, src->buffer, length);
                 }
             }
 
@@ -232,19 +236,19 @@ bool connectStart(PubSubClient* src, Connect* con){
 
             src->lastInActivity = src->lastOutActivity = millis();
 
-            while (!Client_available(&src->_client)) {    // while (!_client->available())
-            // die Schleife wird wiederholt, bis Information vom Client verfügbar ist 
-            // wenn der Rückgabewert true ist, dann heißt es dass eine Nachricht angekommen ist   
+            while (!Client_available(src->_client)) {    // while (!_client->available())
+            // die Schleife wird wiederholt, bis Information vom Client verfuegbar ist
+            // wenn der Rueckgabewert true ist, dann heißt es dass eine Nachricht angekommen ist
                 unsigned long t = millis();
                 //Zeit wird gestoppt
                 if (t - src->lastInActivity >= ((int32_t)src->socketTimeout * 1000UL)) {
                     src->_state = MQTT_CONNECTION_TIMEOUT;
-                    Client_stop(&src->_client);
+                    Client_stop( src->_client);
                     return false;
                 }
             }
             // weil, die while Schleife verlassen wurde, gehen wir davon aus, dass eine einkommende Nachricht vorliegt
-            uint8_t llen;
+            uint16_t llen;
             uint32_t len = readPacket(src,&llen);
 
             if (len == 4) { // wenn die Länge des angekommenen Pakets 4 ist, handelt es sich um ein CONACK
@@ -258,31 +262,26 @@ bool connectStart(PubSubClient* src, Connect* con){
                     src->_state = src->buffer[3];   // sonst wird der RC Wert des CONACKS in State geschrieben
                 }
             }
-            Client_stop(&src->_client);
-        }
-        else {
+            Client_stop(src->_client);
+        } else {
             src->_state = MQTT_CONNECT_FAILED;
         }
         return false;
-    }
-    return true;
 }
 
-void disconnect(PubSubClient* src) {
+UINT8 disconnect(PubSubClient* src) {
 	src->buffer[0] = MQTTDISCONNECT;
 	src->buffer[1] = 0;
-	/*_client->write(this->buffer, 2);
+	src->lastInActivity = src->lastOutActivity = millis(); //millis ist f�r arduino, kann man aber auch mit time.h bib realisieren
+	return src->buffer[0];
+    /*_client->write(this->buffer, 2);
 	_state = MQTT_DISCONNECTED;
 	_client->flush();
 	_client->stop();*/
-	src->lastInActivity = src->lastOutActivity = millis(); //millis ist f�r arduino, kann man aber auch mit time.h bib realisieren
 }
 
-bool publish(PubSubClient* src, const char* topic, const char* payload) {
-
-
-
-
+char publish(PubSubClient* src, const char* topic, const char* payload) {
+	return 2;
 }
 
 // Header wird in die ersten 4 Stellen des Buffers geschrieben 
@@ -293,9 +292,8 @@ size_t buildHeader(uint8_t header, uint8_t* buf, uint16_t length) {
     uint8_t pos = 0;
     uint16_t len = length;
     do {
-
         digit = len  & 127; //digit = len %128
-        len >>= 7; //len = len / 128
+        len >>= 7; 			//len = len / 128
         if (len > 0) {
             digit |= 0x80;
         }
@@ -311,10 +309,11 @@ size_t buildHeader(uint8_t header, uint8_t* buf, uint16_t length) {
 }
 
 // reads a byte into src->buffer and increments index
-bool readByteIntoBuff(PubSubClient* src, uint16_t* index){
+char readByteIntoBuff(PubSubClient* src, uint16_t* index){
   uint16_t current_index = *index;
   uint8_t * write_address = &(src->buffer[current_index]);
-  if(readByte(src,write_address)){
+
+  if(readByte(src, write_address)){
     *index = current_index + 1;
     return true;
   }
@@ -324,32 +323,31 @@ bool readByteIntoBuff(PubSubClient* src, uint16_t* index){
 // reads a byte into result
 bool readByte(PubSubClient* src, uint8_t * result) {
    uint32_t previousMillis = millis();
-   while(!Client_available(&src->_client)) {  // solange eine einkommende Nachricht verfügbar ist 
-     yield();   // gibt dem Prozessor die Möglichkeit andere Prozesse vorzuziehen (Multithreading)
+   while(!Client_available(src->_client) ) {  // solange eine einkommende Nachricht verfuegbar ist
      uint32_t currentMillis = millis();
      if(currentMillis - previousMillis >= ((int32_t) src->socketTimeout * 1000)){
        return false;
      }
    }
-   *result = Client_read(&src->_client);
+   *result = Client_read(src->_client);
    return true;
 }
 
 uint32_t readPacket(PubSubClient* src, uint16_t* lengthLength) {
     uint16_t len = 0;
     if(!readByteIntoBuff(src, &len)) return 0;
-   // bool isPublish = (src->buffer[0]&0xF0) == MQTTPUBLISH; noch nicht notwendig
+   // char isPublish = (src->buffer[0]&0xF0) == MQTTPUBLISH; noch nicht notwendig
     uint32_t multiplier = 1;
     uint32_t length = 0;
-    uint8_t digit = 0;
-    uint16_t skip = 0;
-    uint32_t start = 0;
+    uint8_t  digit 	= 0;
+    //uint16_t skip 	= 0;
+    uint32_t start 	= 0;
 
     do {
         if (len == 5) {
             // Inconid remaining length encoding - kill the connection
             src->_state = MQTT_DISCONNECTED;
-            Client_stop(&(src->_client));
+            Client_stop(src->_client);
             return 0;
         }
         if(!readByte(src,&digit)) return 0;
@@ -401,6 +399,7 @@ void Client_stop(Client* src) {
     // if (src->sock == 255)
     //     return;
 }
+
 uint16_t writeString(const char* string, uint8_t* buf, uint16_t pos) {
     const char* idp = string;
     uint16_t i = 0;
@@ -413,9 +412,9 @@ uint16_t writeString(const char* string, uint8_t* buf, uint16_t pos) {
     buf[pos-i-1] = (i & 0xFF);  // low Byte
     return pos;
 }
-bool write(PubSubClient* src,uint8_t header, uint16_t length) {
+char write(PubSubClient* src, uint8_t header, uint16_t length) {
     uint16_t rc;
-    uint8_t hlen = buildHeader(header, &src->buffer, length);
+    uint8_t  hlen = buildHeader(header, src->buffer, length);
 
 // #ifdef MQTT_MAX_TRANSFER_SIZE
 //     uint8_t* writeBuf = buf+(MQTT_MAX_HEADER_SIZE-hlen);
@@ -431,12 +430,12 @@ bool write(PubSubClient* src,uint8_t header, uint16_t length) {
 //     }
 //     return result;
 // #else
-    rc = Client_write(&src->buffer+(MQTT_MAX_HEADER_SIZE-hlen),length+hlen);
+    rc = Client_write(&(src->buffer[MQTT_MAX_HEADER_SIZE-hlen] ), length+hlen);
     src->lastOutActivity = millis();
     return (rc == hlen+length);
 // #endif
 }
-bool Client_write(const uint8_t* buf, uint16_t len) {
+char Client_write(const uint8_t* buf, uint16_t len) {
     printf("Pseudo Write Funktion: ");
     for (int i = 0; i < len; i++) {
         printf("%u ", buf[i]);  // Use %u for uint8_t type
@@ -445,69 +444,75 @@ bool Client_write(const uint8_t* buf, uint16_t len) {
     return true;
 }
 
+int Client_available(Client* src){ //Client_available muesste von rossendorf uebernommen werden
+	return 0;
+}
+
+struct {
+char buffer;
+} this;
+
+
     //_______________________________Ende-Client-Funktionen__________________________________________________
-bool loop(PubSubClient* pub, Connect* con)
-{
+char loop(PubSubClient* pub, MqttConnect* con) {
 if (connected()) {
         unsigned long t = millis();
         if ((t - pub->lastInActivity > pub->keepAlive*1000UL) || (t - pub->lastOutActivity > pub->keepAlive*1000UL)) {
             if (pub->pingOutstanding) {
                 pub->_state = MQTT_CONNECTION_TIMEOUT;
-                _client->stop(); //clientstopfunktion
+                Client_stop(pub->_client); //client stop funktion
                 return false;
             } else {
                 pub->buffer[0] = MQTTPINGREQ;
                 pub->buffer[1] = 0;
-                _client->write(this->buffer,2); //clientwritefunktion
+                write(pub, this.buffer, 2); //client write function
                 pub->lastOutActivity = t;
                 pub->lastInActivity = t;
                 pub->pingOutstanding = true;
             }
         }
-        if (_client->available()) { //available müsste von rossendorf übernommen werden
-            uint8_t llen;
-            uint16_t len = readPacket(&llen);
-            uint16_t msgId = 0;
+        if (Client_available(pub->_client)) { //Client_available muesste von rossendorf uebernommen werden
+        	uint16_t llen;
+            uint16_t len 	= readPacket(pub, &llen);
+            uint16_t msgId 	= 0;
             uint8_t *payload;
             if (len > 0) {
                 pub->lastInActivity = t;
                 uint8_t type = pub->buffer[0]&0xF0;
-                if (type == MQTTPUBLISH) 
+                if (type == MQTTPUBLISH)
                 {
-                    if (callback) 
-                    {
-
+#if 0
+                    if (pub->callback)  {
                         uint16_t tl = (pub->buffer[llen+1]<<8)+pub->buffer[llen+2]; /* topic length in bytes */
-                        memmove(pub->buffer+llen+2,pub->buffer+llen+3,tl); /* move topic inside buffer 1 byte to front */
-                        pub->buffer[llen+2+tl] = 0; /* end the topic as a 'C' string with \x00 */
-                        char *topic = (char*) pub->buffer+llen+2;
+                        memmove(pub->buffer+llen+2, pub->buffer+llen+3,tl); 		/* move topic inside buffer 1 byte to front */
+                        pub->buffer[llen+2+tl] = 0; 								/* end the topic as a 'C' string with \x00 */
+                        char *topic = (char*) pub->buffer +llen +2;
                         // msgId only present for QOS>0
                         if ((pub->buffer[0]&0x06) == MQTTQOS1) 
                         {
-                            msgId = (pub->buffer[llen+3+tl]<<8)+pub->buffer[llen+3+tl+1];
-                            payload = pub->buffer+llen+3+tl+2;
-                            callback(topic,payload,len-llen-3-tl-2);
+                            msgId   = (pub->buffer[llen+3+tl]<<8)+pub->buffer[llen+3+tl+1];
+                            payload =  pub->buffer+llen+3+tl+2;
+                            pub->callback(topic, payload,len-llen-3-tl-2);
 
                             pub->buffer[0] = MQTTPUBACK;
                             pub->buffer[1] = 2;
                             pub->buffer[2] = (msgId >> 8);
                             pub->buffer[3] = (msgId & 0xFF);
-                            _client->write(this->buffer,4);
+                            write(pub, this.buffer,4);
                             pub->lastOutActivity = t;
 
-                        } 
-                        else 
-                        {
-                            payload = this->buffer+llen+3+tl;
-                            callback(topic,payload,len-llen-3-tl);
+                        }  else    {
+                            payload = this.buffer +llen +3 +tl;
+                            pub->callback(topic, payload, len-llen-3-tl);
                         }
                     }
+#endif
                 } 
                 else if (type == MQTTPINGREQ) 
                 {
                     pub->buffer[0] = MQTTPINGRESP;
                     pub->buffer[1] = 0;
-                    _client->write(this->buffer,2);
+                    write(pub, this.buffer,2);
                 } 
                 else if (type == MQTTPINGRESP) 
                 {
@@ -521,13 +526,10 @@ if (connected()) {
             }
         }
         return true;
-    
     }
     return false;
-
-
-
-
 }
 
 //---------------------------------Ende Definition der Funktionen-------------------------------------------------------
+
+#endif // USE_MQTT_SERVER
