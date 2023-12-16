@@ -102,6 +102,21 @@ typedef struct  {
     UINT8   Qos;
 } Subscription;
 
+typedef struct  {
+    UINT16 	message_id;
+    UINT16 	topic_length;
+    char 	topic_name[TOPIC_LENGTH];
+} Unsubscription;
+
+typedef struct {
+    UINT16 message_id;
+    char topic_name[TOPIC_LENGTH];
+    uint16_t remainingLenght;
+    uint8_t DUP;
+    uint8_t QoS;
+    uint8_t Retain;
+    uint16_t CleanSession;
+} Publish;
 
 #if 0
 // Der FILE Datentyp wird als Platzhalter benutzt, bis die Art des Streams angepasst wird

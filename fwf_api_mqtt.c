@@ -97,6 +97,8 @@ static UINT16 MQTT_on_connect(void);
 static PubSubClient* pPubSubClient;
 static MqttConnect*  pMqttConnect;
 static Subscription* aSubscriptions[10];
+static Unsubscription* aUnsubscriptions[10];
+static Publish* aPublish
 
 
 void MQTT_init(void){
@@ -179,25 +181,102 @@ UINT8 createMqttSuback(UINT8 *buffer) {
     buffer[0] = MQTTSUBACK + 3;     // Packet Type + Remaining Length
     buffer[1] = aSubscriptions[0]->message_id  >> 8; // set MsgID 
     buffer[2] = aSubscriptions[0]->message_id;
-    switch (aSubscriptions[0]->Qos)
+    switch (aSubscriptions[0]->Qos) //Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
     {
     case 0:
         buffer[3] = 0;  //max. Qos 
         break;
     
     case 1: 
-        buffer[3] = 1; //max. Qos
+        buffer[3] = 0; //max. Qos
             break;
     
     case 2:
-        buffer[3] =2; // max. Qos
+        buffer[3] = 0; // max. Qos
         break;
 
     default:
         buffer[3] = 0x80; // Error
         break;
     }
+    return 4;
+}
 
+UINT8 isMqttUnsubscribe(UINT8* buffer, Unsubscription* unsubscript) {   //  1 Byte Control Packet & Flags, 2 Bytes Rem Len, X Bytes Topic
+	if((buffer[0] & 0xf0) != MQTTUNSUBSCRIBE))  return 0; // Client Unsubscribe request + Reserved 
+// Vorerst die Lösung
+    UINT16 len;
+	if((buffer[0] & 0xf0) != MQTTUNSUBSCRIBE))  return 0; // Client Subscribe request + Reserved
+
+	// buffer[0] // Message Length
+	unsubscript->message_id = (buffer[1] << 8) + buffer[2]; 	// Message ID
+	len = strncpy(unsubscript->topic_name, &buffer[5],  (buffer[3 << 8) + buffer[4]);  // topic_name
+
+
+	return 1;
+}
+
+UINT8 createMqttUnsuback(UINT8* buffer){
+    buffer[0] = MQTTUNSUBACK;     // Packet Type 
+    buffer[1] = 3;  // Remaining Length
+    buffer[2] = aSubscriptions[0]->message_id  >> 8; // set MsgID 
+    buffer[3] = aSubscriptions[0]->message_id;
+    
+    return 4;
+  
+}
+
+UINT8 isMqttPublishRequest(UINT8 *buffer, Publish* publ){
+    UINT16 len;
+
+    if((buffer[0]& 0xf0)!= MQTTPUBLISH) return 0; //bit 0-3
+    len= (buffer[3] << 8) + buffer[4];
+    publ->topic_name[0]= '\0';
+
+    if(len > TOPIC_LENGTH){
+        perror("Lenght > TOPIC_LENGHT");
+        return 0;
+    }
+    
+    strncpy(publ->topic_name,(char*)&buffer[5],len);
+    publ->topic_name[len]='\0';
+
+    publ->message_id=(buffer[5+len]<<8)+ buffer[6+len]; //Ist message ID immer vorhanden?
+
+    publ->remainingLenght= buffer[1];
+
+
+
+
+        //Flags befinden sich im ersten byte. bit 4-7
+
+       // Bit:   | 7 | 6 : 5 | 4 |
+       //        +---+---+---+---+
+       // Value: |DUP| QoS  |Retain|
+       //        +---+---+---+---+
+
+    publ->QoS =(buffer[0]& 0x06) >> 1; //Bit 5 und 6
+    publ->DUP=(buffer[0] & 0x08) >> 3; //Bit 7
+    publ->Retain=(buffer[0] & 0x01);    //Bit 4
+
+
+    return 1;
+}
+
+UINT8 isMqttPingreq(UINT8 *buffer){ 
+    if((buffer[0]& 0xf0) != MQTTPINGREQ) return 0; //Fixed Header nur 1 byte
+    return 1;
+}
+
+UINT8 createMqttPingResp(UINT8 *buffer){
+    buffer[0]=MQTTPINGRESP; //Fixed Header nur 1 byte
+    return 4; //warum 4?
+}
+
+UINT8 isMqttPingResp(UINT8 *buffer){
+    if((buffer[0]& 0xf0) != MQTTPINGRESP) return 0;
+    pPubSubClient->pingOutstanding=false;
+    return 1;
 }
 
 //======================================================================================================
@@ -294,7 +373,29 @@ UINT8 channel = 0;          // from received message extracted channel (PWM-,ADC
             if ( !uip_newdata()) return;
             FWF_DBG2_PRINTFv("FSM@WORK ");
             if(isMqttSubscribeRequest(rx_MQTT_msg, &aSubscriptions[0])){
-                createSuback();
+               tcp_server_var->countSendDdata = createSuback(tcp_server_var->pSendDdata);
+            }
+            if(isMqttUnsubscribe(rx_MQTT_msg, &aUnsubscriptions[0])){
+                // TODO: delete Subscription with same Topic
+
+
+                // send / create Unsuback
+                tcp_server_var->countSendDdata = createUnsuback(tcp_server_var->pSendDdata);
+            }
+            if( ){
+
+            }
+            if(isMqttPublishRequest(rx_MQTT_msg, aPublish)){
+                
+            }
+            if(isMqttPingreq(rx_MQTT_msg)){
+                tcp_server_var->countSendDdata = createMqttPingResp(tcp_server_var->pSendDdata);
+                //TODO: lastOut und lastInActivity aktualisieren 
+                //TODO: pingOutstanding?
+            }
+            if(isMqttPingResp(rx_MQTT_msg)){
+                //TODO: lastOut und lastInActivity aktualisieren 
+                //TODO: pingOutstanding?
             }
             tcp_cmd_pos = 0;
             rx_MQTT_msg[uip_len] = 0;      // terminate string for scanning
