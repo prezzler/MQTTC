@@ -110,12 +110,15 @@ typedef struct  {
 
 typedef struct {
     UINT16 message_id;
+    UINT16 topicLen;
     char topic_name[TOPIC_LENGTH];
-    uint16_t remainingLenght;
-    uint8_t DUP;
-    uint8_t QoS;
-    uint8_t Retain;
-    uint16_t CleanSession;
+    UINT16 remainingLenght;
+    UINT8 DUP;
+    UINT8 QoS;
+    UINT8 Retain;
+    UINT16 CleanSession;
+    char payload[MQTT_MAX_PACKET_SIZE-MQTT_MAX_HEADER_SIZE];
+    UINT8 payloadLen; 
 } Publish;
 
 #if 0

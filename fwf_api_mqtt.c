@@ -100,7 +100,7 @@ static Subscription* aSubscriptions[10];
 static int SubCount = 0;
 static Unsubscription* aUnsubscriptions[10];
 static int UnsubCount = 0;
-static Publish* aPublish
+static Publish* aPublish;
 
 
 void MQTT_init(void){
@@ -174,7 +174,7 @@ UINT8 isMqttSubscribeRequest(UINT8 *buffer, Subscription* subscript){
 
 	// buffer[0] // Message Length
 	subscript->message_id = (buffer[1] << 8) + buffer[2]; 	// Message ID
-	len = strncpy(subscript->topic_name, &buffer[5],  (buffer[3 << 8) + buffer[4]);  // topic_name
+	len = strncpy(subscript->topic_name, &buffer[5],  (buffer[3] << 8) + buffer[4]);  // topic_name
 	subscript->Qos = buffer[6];
 
 	return 1;
@@ -232,13 +232,13 @@ UINT8 createMqttUnsuback(UINT8* buffer, Unsubscription* unsubscript, bool valid)
 }
 
 //Überprüft ob es ein Subscription auf ein bestimmtes Topic gibt. Ja: geben den Index der Subscription zurück; Nein: gibt Fehler zurück -1;
-int CheckTopic(Unsubscription* unsubscript){
+int CheckTopicUn(Unsubscription* unsubscript){
     for(int i = 0; i < 10; i++){
         if(aSubscriptions[i]->topic_name == unsubscript->topic_name){
             return i;
         }
     }
-
+    perror("Unsubscribe Topic didn't match a Subscription");
     return -1;
 } 
 
@@ -254,38 +254,55 @@ void deleteMqttSubscription(Subscription* subscript){
 UINT8 isMqttPublishRequest(UINT8 *buffer, Publish* publ){
     UINT16 len;
 
-    if((buffer[0]& 0xf0)!= MQTTPUBLISH) return 0; //bit 0-3
-    len= (buffer[3] << 8) + buffer[4];
-    publ->topic_name[0]= '\0';
+    if((buffer[0]& 0xf0)!= MQTTPUBLISH) return 0; //bit 4-7
+        //Flags befinden sich im ersten byte. bit 0-3
+
+        // Bit:   | 7 | 6 | 5 | 4 | 3 | 2 : 1 | 0    |
+        //        +---+---+---+---+---+---+---+------+
+        // Value: |MQTTPACKET TYPE|DUP| QoS   |Retain|
+        //        +---+---+---+---+---+---+---+------+
+   
+    //index of buffer 
+    int index = 0;
+
+    publ->DUP = (buffer[index] & 0x08) >> 3; //Bit 3 , DUP bei QoS 0 immer 0
+    publ->QoS = (buffer[index]& 0x06) >> 1; //Bit 2 und 1
+    publ->Retain = (buffer[index] & 0x01);    //Bit 0 , wenn true (1) dann speichert der Server die Nachricht um auch an alle zukünfitgen Subs. des Topics zu schicken
+    UINT16 = remainingLenght = buffer[index++];// index 1
+    publ->remainingLenght = remainingLenght;
+
+    publ->topicLen = len = (buffer[index++] << 8) + buffer[index++]; //topic length // index 2,3
 
     if(len > TOPIC_LENGTH){
         perror("Lenght > TOPIC_LENGHT");
         return 0;
     }
+    memset(publ->topic_name, 0, len)//publ->topic_name[0]= '\0';
+    strncpy(publ->topic_name,(char*)&buffer[index++],len);// index 4
+    publ->topic_name[len]='\0';// TODO: notwendig?
+    index += len;
+
+    int payloadLen = 0;
+    if(publ->QoS > 0){  
+        publ->message_id=(buffer[index++]]<<8)+ buffer[index++]; //Ist nur bei QoS > 0 enthalten
+    }
     
-    strncpy(publ->topic_name,(char*)&buffer[5],len);
-    publ->topic_name[len]='\0';
+    payloadLen = remainingLenght - (index-1);   //remLen - länge seit remLen (remLen fängt bei 1 an)
+    publ->payloadLen = payloadLen;
 
-    publ->message_id=(buffer[5+len]<<8)+ buffer[6+len]; //Ist message ID immer vorhanden?
-
-    publ->remainingLenght= buffer[1];
-
-
-
-
-        //Flags befinden sich im ersten byte. bit 4-7
-
-       // Bit:   | 7 | 6 : 5 | 4 |
-       //        +---+---+---+---+
-       // Value: |DUP| QoS  |Retain|
-       //        +---+---+---+---+
-
-    publ->QoS =(buffer[0]& 0x06) >> 1; //Bit 5 und 6
-    publ->DUP=(buffer[0] & 0x08) >> 3; //Bit 7
-    publ->Retain=(buffer[0] & 0x01);    //Bit 4
-
+    strncpy(publ->payload,buffer[index++],payloadLen);
 
     return 1;
+}
+
+int CheckTopicPub(Publish* publ){
+    for(int i = 0; i < 10; i++){
+        if(aSubscriptions[i]->topic_name == publ->topic_name){
+            return i;
+        }
+    }
+    perror("Publish Topic didn't match a Subscription");
+    return -1;
 }
 
 UINT8 isMqttPingreq(UINT8 *buffer){ 
@@ -402,7 +419,7 @@ UINT8 channel = 0;          // from received message extracted channel (PWM-,ADC
                SubCount++;
             }
             if(isMqttUnsubscribe(rx_MQTT_msg, &aUnsubscriptions[UnsubCount])){
-                int ret = CheckTopic(&aUnsubscriptions[UnsubCount]); //valide Unsubscription?
+                int ret = CheckTopicUn(&aUnsubscriptions[UnsubCount]); //valide Unsubscription?
                 if ( ret >= 0 || ret < 10){
                     // send / create Unsuback
                     tcp_server_var->countSendDdata = createMqttUnsuback(tcp_server_var->pSendDdata, &aUnsubscriptions[UnsubCount], true);
@@ -420,7 +437,13 @@ UINT8 channel = 0;          // from received message extracted channel (PWM-,ADC
 
             }
             if(isMqttPublishRequest(rx_MQTT_msg, aPublish)){
-                
+                int ret = CheckTopicPub(aPublish);
+                if ( ret >= 0 || re < 10){
+                    //TODO:
+                    // send publish to the Client that is subscribed 
+                    // send to Client with aSubscriptions[ret]
+                }
+        
             }
             if(isMqttPingreq(rx_MQTT_msg)){
                 tcp_server_var->countSendDdata = createMqttPingResp(tcp_server_var->pSendDdata);
