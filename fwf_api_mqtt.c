@@ -97,7 +97,9 @@ static UINT16 MQTT_on_connect(void);
 static PubSubClient* pPubSubClient;
 static MqttConnect*  pMqttConnect;
 static Subscription* aSubscriptions[10];
+static int SubCount = 0;
 static Unsubscription* aUnsubscriptions[10];
+static int UnsubCount = 0;
 static Publish* aPublish
 
 
@@ -177,11 +179,11 @@ UINT8 isMqttSubscribeRequest(UINT8 *buffer, Subscription* subscript){
 
 	return 1;
 }
-UINT8 createMqttSuback(UINT8 *buffer) {
+UINT8 createMqttSuback(UINT8 *buffer, Subscription* subscript) {
     buffer[0] = MQTTSUBACK + 3;     // Packet Type + Remaining Length
-    buffer[1] = aSubscriptions[0]->message_id  >> 8; // set MsgID 
-    buffer[2] = aSubscriptions[0]->message_id;
-    switch (aSubscriptions[0]->Qos) //Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
+    buffer[1] = subscript->message_id  >> 8; // set MsgID 
+    buffer[2] = subscript->message_id;
+    switch (subscript->Qos) //Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
     {
     case 0:
         buffer[3] = 0;  //max. Qos 
@@ -199,6 +201,7 @@ UINT8 createMqttSuback(UINT8 *buffer) {
         buffer[3] = 0x80; // Error
         break;
     }
+    
     return 4;
 }
 
@@ -212,18 +215,40 @@ UINT8 isMqttUnsubscribe(UINT8* buffer, Unsubscription* unsubscript) {   //  1 By
 	unsubscript->message_id = (buffer[1] << 8) + buffer[2]; 	// Message ID
 	len = strncpy(unsubscript->topic_name, &buffer[5],  (buffer[3 << 8) + buffer[4]);  // topic_name
 
-
 	return 1;
 }
 
-UINT8 createMqttUnsuback(UINT8* buffer){
+UINT8 createMqttUnsuback(UINT8* buffer, Unsubscription* unsubscript, bool valid){
     buffer[0] = MQTTUNSUBACK;     // Packet Type 
     buffer[1] = 3;  // Remaining Length
-    buffer[2] = aSubscriptions[0]->message_id  >> 8; // set MsgID 
-    buffer[3] = aSubscriptions[0]->message_id;
-    
+    buffer[2] = unsubscript->message_id  >> 8; // set MsgID 
+    buffer[3] = unsubscript->message_id;
+    if(valid)   // Return Code (Reason String)
+        buffer[4] = 0;
+    else 
+        buffer[4] = 17; // no topic matched
     return 4;
   
+}
+
+//Überprüft ob es ein Subscription auf ein bestimmtes Topic gibt. Ja: geben den Index der Subscription zurück; Nein: gibt Fehler zurück -1;
+int CheckTopic(Unsubscription* unsubscript){
+    for(int i = 0; i < 10; i++){
+        if(aSubscriptions[i]->topic_name == unsubscript->topic_name){
+            return i;
+        }
+    }
+
+    return -1;
+} 
+
+// setzt alle Werte von der löschenden Subscription auf null
+void deleteMqttSubscription(Subscription* subscript){
+    memset(subscript->topic_name, 0, sizeof(subscript->topic_name));
+    subscript->topic_length = 0;
+    subscript->message_id = 0;
+    subscript->Qos = 0;
+    SubCount--;
 }
 
 UINT8 isMqttPublishRequest(UINT8 *buffer, Publish* publ){
@@ -372,15 +397,24 @@ UINT8 channel = 0;          // from received message extracted channel (PWM-,ADC
         case MQTT_FSM_WORK: 	// 4. nach INIT mit Ack des Client
             if ( !uip_newdata()) return;
             FWF_DBG2_PRINTFv("FSM@WORK ");
-            if(isMqttSubscribeRequest(rx_MQTT_msg, &aSubscriptions[0])){
-               tcp_server_var->countSendDdata = createSuback(tcp_server_var->pSendDdata);
+            if(isMqttSubscribeRequest(rx_MQTT_msg, &aSubscriptions[SubCount])){
+               tcp_server_var->countSendDdata = createMqttSuback(tcp_server_var->pSendDdata, &aSubscriptions[SubCount]);
+               SubCount++;
             }
-            if(isMqttUnsubscribe(rx_MQTT_msg, &aUnsubscriptions[0])){
-                // TODO: delete Subscription with same Topic
+            if(isMqttUnsubscribe(rx_MQTT_msg, &aUnsubscriptions[UnsubCount])){
+                int ret = CheckTopic(&aUnsubscriptions[UnsubCount]); //valide Unsubscription?
+                if ( ret >= 0 || ret < 10){
+                    // send / create Unsuback
+                    tcp_server_var->countSendDdata = createMqttUnsuback(tcp_server_var->pSendDdata, &aUnsubscriptions[UnsubCount], true);
+                    deleteMqttSubscription(&aSubscriptions[ret]);
+                    UnsubCount++;
+                }
 
+                else {
+                    //MqttUnsubAck mit Fehler RC;
+                    tcp_server_var->countSendDdata = createMqttUnsuback(tcp_server_var->pSendDdata, &aUnsubscriptions[UnsubCount], false);
+                }
 
-                // send / create Unsuback
-                tcp_server_var->countSendDdata = createUnsuback(tcp_server_var->pSendDdata);
             }
             if( ){
 
