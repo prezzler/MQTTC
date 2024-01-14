@@ -1,4 +1,4 @@
-// MQTT_VERSION : Pick the version
+﻿// MQTT_VERSION : Pick the version
 // #define MQTT_VERSION MQTT_VERSION_3_1
 #ifndef MQTT_VERSION
 #define MQTT_VERSION MQTT_VERSION_3_1_1
@@ -74,24 +74,16 @@
 // Maximum size of fixed header and variable length size header
 #define MQTT_MAX_HEADER_SIZE 5
 
-// #if defined(ESP8266) || defined(ESP32)
-//  #include <functional>
-//  #define MQTT_CALLBACK_SIGNATURE std::function<void(char*, UINT8*, unsigned int)> callback
-//  #else
-//  #define MQTT_CALLBACK_SIGNATURE void (*callback)(char*, UINT8*, unsigned int)
-//  typedef void (*MQTT_CALLBACK_SIGNATURE)(char*, byte*, unsigned int);
-// #endif
-
-// #define checkStringLength(l,s) if (l+2+strnlen(s, this->bufferSize) > this->bufferSize) {_client->stop();return false;}
-
+// Zur Verwendung des Callbacks
+typedef void (*MQTT_CALLBACK_SIGNATURE)(char *, UINT8 *, unsigned int);
 //___________________________________________________________________________________________________________________________________________________
 // Wifi bzw. Netzwerk Client
-typedef struct
-{
-    UINT8 ip; // Kaever: vermutlich falsch
-    UINT16 port;
-    UINT8 sock; // Kaever: erklaeren
-} Client;
+// typedef struct
+// {
+//     UINT8 ip; // Kaever: vermutlich falsch
+//     UINT16 port;
+//     UINT8 sock; // Kaever: erklaeren
+// } Client;
 
 #define TOPIC_LENGTH 128
 typedef struct
@@ -121,37 +113,22 @@ typedef struct
     uint16_t CleanSession;
 } Publish;
 
-#if 0
-// Der FILE Datentyp wird als Platzhalter benutzt, bis die Art des Streams angepasst wird
-// daher braucht man vllt sowas:
-    // Define FILE type if not already defined
-#ifndef FILE
-typedef UINT8 *FILE;  // This is a simple placeholder; you may need to replace it with an appropriate type.
-#endif
-#endif
-// ENDE
-
 typedef struct
-{                      // Information zum Broker
-    Client *_client;   // zum Versenden von Nachrichten
-                       // Statusinformation zur Verbindung zum Broker
-    UINT8 *buffer;     // aktuell zu sendendes Paket
-    UINT16 bufferSize; // Groesse des aktuell zu sendenden Paketes
-    UINT16 keepAlive;  // max. MQTT Wartezeit auf MQTT-Ping
-    // UINT16 socketTimeout;	// Dauer der Verbindungszeit zum Client
+{ // Information zum Broker
+    // Client *_client;        // zum Versenden von Nachrichten
+    //  Statusinformation zur Verbindung zum Broker
+    UINT8 *buffer;          // aktuell zu sendendes Paket
+    UINT16 bufferSize;      // Groesse des aktuell zu sendenden Paketes
+    UINT16 keepAlive;       // max. MQTT Wartezeit auf MQTT-Ping
+    UINT16 socketTimeout;   //  Gibt an wie lange der Client auf einkommende Information wartet, wenn Daten erwartet werden. Beispielsweise, während dem lesen von einem MQTT Paket.
     UINT16 nextMsgId;       // Publish-MsgId
     UINT32 lastOutActivity; // Timestamp fuer Output
     UINT32 lastInActivity;  // Timestamp fuer Input
     bool pingOutstanding;   // Info zu ausstehendem Ping
     int _state;             // MQTT Zustand
-
+    MQTT_CALLBACK_SIGNATURE callback;
     // void (*callback)(char*, unsigned char*, unsigned int); // die Behandlungsfunktion alternativ zu callback Kaever
-    //  MQTT_CALLBACK_SIGNATURE callback;
-    // Broker Verbindungsdaten
-    UINT8 ip[4];        // Broker IP
-    const char *domain; // Broker domain name
-    UINT16 port;        // Broker Rx Port : MQTT 1883
-    // UINT8* stream;	// unklar
+
 } PubSubClient;
 
 //---------------------------------Connect-Funktion-Opitmierung------------------------------------------------------
@@ -160,12 +137,17 @@ typedef struct
     PubSubClient *PSCsrc;
     const char *id;
     const char *user;
-    const char *pass;
+    const char *pwd;
     const char *willTopic;
     UINT8 willQos;
     bool willRetain;
     const char *willMessage;
     bool cleanSession;
+    // Broker Verbindungsdaten
+    const char *ip;     // Broker IP
+    const char *domain; // Broker domain name
+    UINT16 port;        // Broker Rx Port : MQTT 1883
+
 } MqttConnect;
 //-----------------------------------------------------------------------------------
 
@@ -173,50 +155,41 @@ typedef struct
 
 UINT8 checkStringLength(PubSubClient *src, int l, const char *s); // als Ersatz f�r das "CHECK_STRING_LENGHT"-Makro
 
-UINT32 millis(); // nicht die Beste Lösung, da hier keine präzise Zeit gezählt sondern CPU Clocks pro Sekunde
+UINT32 millis();
 
-MqttConnect *MqttConnectKonstruktor(PubSubClient *src); // setzt Standartwerte
+void setConnectUser(MqttConnect *src, char *user, char *pwd);
+void setConnectWill(MqttConnect *src, char *willTopic, UINT8 willQos, bool willRetain, char *willMessage);
+MqttConnect *MqttConnectKonstruktor(PubSubClient *src, char *id, char *ip, UINT16 port) // setzt Standartwerte
 
-//_______________________________Beginn-PubSubClient-Funktionen_____________________________________________
+    //_______________________________Beginn-PubSubClient-Funktionen_____________________________________________
+    PubSubClient *PubSubConstructor(Client *clie); // Standardkonstruktor, neues anlegen einer Variable mittels "PubSubClient *A=Constructor()"
 
-// void setServer(PubSubClient* src, IPAddress ip, UINT16 port);
-// void setServer(PubSubClient* src, UINT8* ip, UINT16 port);
-#if 0
-void setServer(PubSubClient* src, const char* domain, UINT16 port); // erstmal nur das um ersten Test machen zu können
-
-// Man müsste eine Lösung für die Überladungen suchen!!!!
-void setCallback(PubSubClient* src, MQTT_CALLBACK_SIGNATURE callback); // implementierung hinzugefügt
-void setClient(PubSubClient* src, Client* client);
-void setStream(PubSubClient* src, FILE* stream);
-void setSocketTimeout(PubSubClient* src, UINT16 timeout);
-#endif
-
+void setCallback(PubSubClient *src, MQTT_CALLBACK_SIGNATURE callback);
+void setSocketTimeout(PubSubClient *src, UINT16 timeout);
 void setKeepAlive(PubSubClient *src, UINT16 keepAlive);
 char setBufferSize(PubSubClient *src, UINT16 size); // mittels malloc wurde Speicher freigegeben, wo wird er mittels free freigegeben? Muss womoeglich manuell immer am Ende aufgerufen werden
-
 UINT16 getBufferSize(PubSubClient *src);
 
-PubSubClient *PubSubConstructor(Client *clie); // Standardkonstruktor, neues anlegen einer Variable mittels "PubSubClient *A=Constructor()"
+bool connected(PubSubClient *src); // Kaever: erklaeren
 
-char connectStart(PubSubClient *src, MqttConnect *con);
+UINT16 writeString(const char *string, uint8_t *buf, uint16_t pos);
+
+char write(PubSubClient *src, uint8_t header, uint16_t length)
+
+    char connectStart(PubSubClient *src, MqttConnect *con);
 UINT8 *disconnect(PubSubClient *src); // unvollstaendig
 char publish(PubSubClient *src, const char *topic, const char *payload);
 size_t buildHeader(UINT8 header, UINT8 *buf, UINT16 length);
 
-char readByteIntoBuff(PubSubClient *src, UINT16 *index);
+bool readByteIntoBuff(PubSubClient *src, UINT16 *index);
 bool readByte(PubSubClient *src, UINT8 *result);
 
 uint32_t readPacket(PubSubClient *src, UINT16 *lengthLength);
 
-char connected(); // Kaever: erklaeren
-
 //_______________________________Ende-PubSubClient-Funktionen__________________________________________________
 
-//_______________________________Beginn-Client-Funktionen_____________________________________________
-
-#if 0
-void Client_stop(Client* src);
-int  Client_connectDomain(Client* src, const char* domain, UINT16 port);
+void Client_stop(Client *src);
+int Client_connectDomain(Client *src, const char *domain, UINT16 port);
 #endif
 char Client_write(const UINT8 *buf, UINT16 len);
 UINT16 writeString(const char *string, UINT8 *buf, UINT16 pos);
