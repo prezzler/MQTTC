@@ -162,12 +162,12 @@ void setConnectWill(MqttConnect *src, char *willTopic, UINT8 willQos, bool willR
 MqttConnect *MqttConnectKonstruktor(PubSubClient *src, char *id, char *ip, UINT16 port) // setzt Standartwerte
 
     //_______________________________Beginn-PubSubClient-Funktionen_____________________________________________
-    PubSubClient *PubSubConstructor(Client *clie); // Standardkonstruktor, neues anlegen einer Variable mittels "PubSubClient *A=Constructor()"
+    PubSubClient *PubSubConstructor(); // Standardkonstruktor, neues anlegen einer Variable mittels "PubSubClient *A=Constructor()"
 
 void setCallback(PubSubClient *src, MQTT_CALLBACK_SIGNATURE callback);
 void setSocketTimeout(PubSubClient *src, UINT16 timeout);
 void setKeepAlive(PubSubClient *src, UINT16 keepAlive);
-char setBufferSize(PubSubClient *src, UINT16 size); // mittels malloc wurde Speicher freigegeben, wo wird er mittels free freigegeben? Muss womoeglich manuell immer am Ende aufgerufen werden
+// char setBufferSize(PubSubClient *src, UINT16 size); // mittels malloc wurde Speicher freigegeben, wo wird er mittels free freigegeben? Muss womoeglich manuell immer am Ende aufgerufen werden
 UINT16 getBufferSize(PubSubClient *src);
 
 bool connected(PubSubClient *src); // Kaever: erklaeren

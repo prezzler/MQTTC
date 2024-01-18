@@ -78,21 +78,14 @@ MqttConnect *MqttConnectKonstruktor(PubSubClient *src, char *id, char *ip, UINT1
 
     return &tmpConnect;
 }
-// Client *construct_Client()
-// {
-//     static Client thisClient;
-//     thisClient.ip = 0;
-//     thisClient.port = 0;
-//     thisClient.sock = 0;
-//     return &thisClient;
-// }
-//_______________________________Beginn-PubSubClient-Funktionen_____________________________________________
+
+//______________________________Beginn-PubSubClient-Funktionen_____________________________________________
 PubSubClient *PubSubConstructor()
 {
     static PubSubClient tmpPubSubClient;
     tmpPubSubClient._state = MQTT_DISCONNECTED;
     setCallback(&tmpPubSubClient, NULL);
-    setBufferSize(&tmpPubSubClient, MQTT_MAX_PACKET_SIZE); // hier wird auch tmpPubSubClient.bufferSize = MQTT_MAX_PACKET_SIZE gesetzt
+    // setBufferSize(&tmpPubSubClient, MQTT_MAX_PACKET_SIZE); // hier wird auch tmpPubSubClient.bufferSize = MQTT_MAX_PACKET_SIZE gesetzt
     setKeepAlive(&tmpPubSubClient, MQTT_KEEPALIVE);
     setSocketTimeout(&tmpPubSubClient, MQTT_SOCKET_TIMEOUT);
 
@@ -114,32 +107,32 @@ void setKeepAlive(PubSubClient *src, UINT16 keepAlive)
     src->keepAlive = keepAlive;
 }
 
-char setBufferSize(PubSubClient *src, UINT16 size)
-{
-    if (size == 0)
-    {
-        // Cannot set it back to 0
-        return false;
-    }
-    if (src->bufferSize == 0)
-    {
-        src->buffer = (uint8_t *)malloc(size);
-    }
-    else
-    {
-        uint8_t *newBuffer = (uint8_t *)realloc(src->buffer, size);
-        if (newBuffer != NULL)
-        {
-            src->buffer = newBuffer;
-        }
-        else
-        {
-            return false;
-        }
-    }
-    src->bufferSize = size;
-    return (src->buffer != NULL);
-}
+// char setBufferSize(PubSubClient *src, UINT16 size)
+// {
+//     if (size == 0)
+//     {
+//         // Cannot set it back to 0
+//         return false;
+//     }
+//     if (src->bufferSize == 0)
+//     {
+//         src->buffer = (uint8_t *)malloc(size);
+//     }
+//     else
+//     {
+//         uint8_t *newBuffer = (uint8_t *)realloc(src->buffer, size);
+//         if (newBuffer != NULL)
+//         {
+//             src->buffer = newBuffer;
+//         }
+//         else
+//         {
+//             return false;
+//         }
+//     }
+//     src->bufferSize = size;
+//     return (src->buffer != NULL);
+// }
 
 UINT16 getBufferSize(PubSubClient *src)
 {
@@ -183,9 +176,10 @@ UINT16 writeString(const char *string, uint8_t *buf, UINT16 pos)
 
 char write(PubSubClient *src, uint8_t header, UINT16 length)
 {
-    UINT16 rc;
-    UINT8 hlen = buildHeader(header, src->buffer, length);
-    rc = Client_write(&(src->buffer[MQTT_MAX_HEADER_SIZE - hlen]), length + hlen);
+    // PubSub buffer an TCP Buffer übergeben
+    // UINT16 rc;
+    // UINT8 hlen = buildHeader(header, src->buffer, length);
+    // rc = Client_write(&(src->buffer[MQTT_MAX_HEADER_SIZE - hlen]), length + hlen);
     src->lastOutActivity = millis();
     return (rc == hlen + length);
 }
@@ -345,10 +339,10 @@ UINT8 *disconnect(PubSubClient *src)
     src->buffer[1] = 0;
     src->lastInActivity = src->lastOutActivity = millis(); // millis ist  fuer arduino, kann man aber auch mit time.h bib realisieren
     return &src->buffer[0];
-    /*_client->write(this->buffer, 2);
-    _state = MQTT_DISCONNECTED;
-    _client->flush();
-    _client->stop();*/
+    // _client->write(this->buffer, 2);
+    // _state = MQTT_DISCONNECTED;
+    // _client->flush();
+    // _client->stop();
 }
 
 char publish(PubSubClient *src, const char *topic, const char *payload)
