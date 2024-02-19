@@ -116,6 +116,18 @@ typedef enum CPP_ENUM_SIZE_8Bit {
 	MQTT_PUBLISH_TIMEOUT			/// Broker not responding: Timeout
 } MQTT_PUBLISH_state ;
 
+typedef enum CPP_ENUM_SIZE_8Bit {
+	MQTT_SUBSCRIBE_FirstSubscribeRequired		= 1,		/// SUBSCRIBE REQ to be sent to Broker
+	MQTT_SUBSCRIBE_Scheduled 	,		/// SUBSCRIBE REQ is in process
+	MQTT_SUBSCRIBE_SENT		,	    	/// SUBSCRIBE REQ has been sent to Broker
+	MQTT_SUBSCRIBE_ACKNOWLEDGED ,       /// SUBSCRIBE ACK has been received
+    MQTT_SUBSCRIBE_PUBLISH_REC		,	/// PUBREC has been sent
+	MQTT_SUBSCRIBE_PUBLISH_REL		,	/// PUBREL has been received
+	MQTT_SUBSCRIBE_PUBLISH_COMP		,	/// PUBCOMP has been sent
+	MQTT_SUBSCRIBE_PUBLISH_TIMEOUT		/// Broker not responding: Timeout
+
+} MQTT_SUBSCRIBE_state ;
+
 
 // VORSICHT : Fuer Strukturgleichheit mit struct http_state im allgemeinen Teil sorgen!!!!
 typedef struct tcp_MQTT_CLIENT_hasMsg_vars {
@@ -143,13 +155,13 @@ typedef union {
 	MQTT_MType_DupRetainQos 	BA; //Bit Array
 } HeaderFlags;
 
-// Netzwerk Client
-typedef struct  {
-	Union32 ip;	 	// Kaever:
-    UINT16 	rPort;	// Remote port des Servers
-    //UINT8   sock; 	// Kaever: erklaeren
-    UINT8 connected; // Ka
-} Client;
+// // Netzwerk Client
+// typedef struct  {
+// 	Union32 ip;	 	// Kaever:
+//     UINT16 	rPort;	// Remote port des Servers
+//     //UINT8   sock; 	// Kaever: erklaeren
+//     UINT8 connected; // Ka
+// } Client;
 
 
 #define TOPIC_LENGTH 128 // Maximum topic length
@@ -159,7 +171,9 @@ typedef struct  {
     UINT16 	topic_length;
     char 	topic_name[TOPIC_LENGTH];
     UINT8   Qos;
-    UINT8 	acked; // Acknowledge has been sent
+    uint16_t remainingLength;
+    MQTT_Subscribe_state state;
+    HeaderFlags	headerflags;     // Message_type:4; Reserved:4;
 } Subscription;
 
 typedef struct  {

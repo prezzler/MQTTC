@@ -69,17 +69,17 @@ typedef struct {
 
 #define MQTT_TIMEOUT_IN_MS				50
 
-#if USE_MQTT_SERVER
+//#if USE_MQTT_SERVER
 // #define MQTT_PORT 				1883
 
-#if _FWF_APP_MQTT_MODULE_C
+//#if _FWF_APP_MQTT_MODULE_C
 #define extern
 #endif
 
 #undef extern
 
 
-#if _FWF_APP_MQTT_MODULE_C
+//#if _FWF_APP_MQTT_MODULE_C
 
 #define TCP_CMD_SIZE  10
 #define TCP_PAR1_SIZE 4
@@ -110,6 +110,6 @@ UINT16 MQTT_Server_MsgOutstanding(UINT8 * pMsg);
 
 void    init_MQTT_ADC(void);
 
-#endif // USE_MQTT_SERVER
+// #endif // USE_MQTT_SERVER
 
-#endif // MQTT_HEADER
+// #endif // MQTT_HEADER
