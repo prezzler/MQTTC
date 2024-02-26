@@ -212,7 +212,7 @@ UINT16 createSubscribeReqMsg(Subscription* pSubscribe, UINT8 *TxBuf) {
 UINT8 isMqttSubscribeAck(UINT8 *buffer, UINT16 msg_length){
 	UINT8 	mqtt_msg_len;
 	UINT8   buf_index 			= 0;
-	UINT8 	subscription_index 	= 0;
+	UINT8 	subs_index 	= 0;
 	UINT16  message_id;
 	UINT8   return_code;
 
@@ -220,12 +220,13 @@ UINT8 isMqttSubscribeAck(UINT8 *buffer, UINT16 msg_length){
 		if( (buffer[buf_index] & 0xf0) != MQTTSUBACK)  return 0; 	// Client Subscribe Acknowledgement + Reserved
 		mqtt_msg_len = buffer[buf_index + 1];  					// Subscr. Message Length
 		message_id   = (buffer[buf_index+2] << 8) + buffer[buf_index+3]; 				// Message ID
+		return_code  = buffer[buf_index+4]; 						// Return Code
 
 		// Check if the message ID matches any subscription in the array
-		for(subscription_index = 0; subscription_index < MaxSubscriptions_of_this_Node; subscription_index++) {
-			if(aSubscriptions[subscription_index].message_id == message_id && 
-               aSubscriptions[subscription_index].QoS == return_code) {
-				aSubscriptions[subscription_index].state = MQTT_SUBSCRIBE_ACKNOWLEDGED; // Set the subscription state to ACKED
+		for(subs_index = 0; subs_index < MaxSubscriptions_of_this_Node; subs_index++) {
+			if(aSubscriptions[subs_index].message_id == message_id ) {
+				aSubscriptions[subs_index].QoS = return_code;
+				aSubscriptions[subs_index].state = MQTT_SUBSCRIBE_ACKNOWLEDGED; // Set the subscription state to ACKED
 				return 1; // Found a matching subscription
 			}
 		}
@@ -434,12 +435,12 @@ UINT8 isMqttSubscribeRequest(UINT8 *buffer, UINT16 msg_length){
 UINT8 	mqtt_msg_len;
 Subscription* subscript ;
 UINT8   buf_index 			= 0;
-UINT8 	subscription_index 	= 0;
+UINT8 	subs_index 	= 0;
 
 	while(buf_index < msg_length) {
 		if( (buffer[buf_index] & 0xf0) != MQTTSUBSCRIBE)  return 0; 	// Client Subscribe request + Reserved
 		mqtt_msg_len = buffer[buf_index + 1];  					// Subscr. Message Length
-		subscript = &aSubscriptions[subscription_index];		// Take a subscription
+		subscript = &aSubscriptions[subs_index];		// Take a subscription
 		subscript->message_id   = (buffer[buf_index+2] << 8) + buffer[buf_index+3]; 				// Message ID
 		subscript->topic_length = (buffer[buf_index+4] << 8) + buffer[buf_index+5];
 		strncpy( subscript->topic_name, (char*) &buffer[buf_index+6],  subscript->topic_length);  	// topic_name
@@ -447,38 +448,38 @@ UINT8 	subscription_index 	= 0;
 		subscript->acked 	= 0;
 
 		buf_index += 2 + mqtt_msg_len;
-		subscription_index ++;
+		subs_index ++;
 	}
 	return 1; // case MQTTSUBSCRIBE
 }
 
 // Return #bytes to send
-UINT16 createMqttSuback(UINT8 *buffer, UINT8 subscription_index) {	// Subscribe ack anlegen
+UINT16 createMqttSuback(UINT8 *buffer, UINT8 subs_index) {	// Subscribe ack anlegen
 #if 0
 	UINT8   buf_index ;
 	// Take the first subscription
 	buffer[0] 	= MQTTSUBACK ;//+ 3;     	// Packet Type
-	buffer[2]   = aSubscriptions[subscription_index].message_id  >> 8; 	// set MsgID
-	buffer[3]   = aSubscriptions[subscription_index].message_id;
-    buffer[4] 	= aSubscriptions[subscription_index].QoS; 					// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
+	buffer[2]   = aSubscriptions[subs_index].message_id  >> 8; 	// set MsgID
+	buffer[3]   = aSubscriptions[subs_index].message_id;
+    buffer[4] 	= aSubscriptions[subs_index].QoS; 					// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
 	buf_index 	= 4;
-	subscription_index ++;
-	while(subscription_index < MaxSubscriptions_of_this_Node) {
-		if( !aSubscriptions[subscription_index].message_id ) break;			// Naechste aSubscription valide?
-	    buffer[buf_index] = aSubscriptions[subscription_index].QoS;			// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
-	    aSubscriptions[subscription_index].acked = 1;
+	subs_index ++;
+	while(subs_index < MaxSubscriptions_of_this_Node) {
+		if( !aSubscriptions[subs_index].message_id ) break;			// Naechste aSubscription valide?
+	    buffer[buf_index] = aSubscriptions[subs_index].QoS;			// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
+	    aSubscriptions[subs_index].acked = 1;
 	    buf_index ++ ;
-	    subscription_index ++;
+	    subs_index ++;
 	}
 	buffer[1] 	= buf_index - 1;			    // Remaining Length
     return buf_index +1;
 #else // 1 Suback per Message
-    aSubscriptions[subscription_index].acked = 1;
+    aSubscriptions[subs_index].acked = 1;
     buffer[0] = MQTTSUBACK ;	       // Packet Type
     buffer[1] = 3;     				   // Remaining Length
-    buffer[2] = aSubscriptions[subscription_index].message_id  >> 8; // set MsgID
-    buffer[3] = aSubscriptions[subscription_index].message_id;
-    buffer[4] = aSubscriptions[subscription_index].QoS;				// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
+    buffer[2] = aSubscriptions[subs_index].message_id  >> 8; // set MsgID
+    buffer[3] = aSubscriptions[subs_index].message_id;
+    buffer[4] = aSubscriptions[subs_index].QoS;				// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
     return 5;
 #endif
 }
@@ -488,19 +489,19 @@ UINT8 isMqttUnsubscribeRequest(UINT8* buffer, UINT16 msg_length) {   //  1 Byte 
 	UINT8 			mqtt_msg_len;
 	Unsubscription* unSubscript ;
 	UINT8   buf_index 				= 0;
-	UINT8 	unSubscription_index 	= 0;
+	UINT8 	unSubs_index 	= 0;
 
 		while(buf_index < msg_length) {
 			if( (buffer[buf_index] & 0xf0) != MQTTUNSUBSCRIBE)  return 0; 	// Client Unsubscribe request + Reserved
 			mqtt_msg_len = buffer[buf_index + 1];  							// UnSubscr. Message Length
-			unSubscript = &aUnsubscriptions[unSubscription_index];			// Take an unSubscription_index
+			unSubscript = &aUnsubscriptions[unSubs_index];			// Take an unSubs_index
 			unSubscript->message_id   = (buffer[buf_index+2] << 8) + buffer[buf_index+3]; 					// Message ID
 			unSubscript->topic_length = (buffer[buf_index+4] << 8) + buffer[buf_index+5];
 			strncpy( unSubscript->topic_name, (char*) &buffer[buf_index+6],  unSubscript->topic_length);  	// topic_name
 			unSubscript->acked 	= 0;
 
 			buf_index += 2 + mqtt_msg_len;
-			unSubscription_index ++;
+			unSubs_index ++;
 		}
 		return 1; // case MQTTSUBSCRIBE
 	//ka
@@ -696,6 +697,7 @@ Subscription* pSubscriptionStruct;
 	if( (isMqttSubscribeAck(RxBuffer, msg_Rx_len, pSubscriptionStruct) ) ){ // Subscribe Acknowledgement erhalten und Subscription mit übereinstimmenden Message_ID (pSubscriptionStruct)
 		pSubscriptionStruct->state = MQTT_SUBSCRIBE_ACKED; 
 	}
+	
 	if( (isMqttRxPublish(RxBuffer, aRxPublish))){	// Prüft ob der eingehende Buffer ein Publish ist und speichert die Daten in aRxPublish
 		// checkt ob der publish topic auch in einer Subscription mit state = MQTT_SUBSCRIBE_ACKED ist
 		int ret_index = 0;
@@ -708,7 +710,7 @@ Subscription* pSubscriptionStruct;
 				aSubscriptions[ret_index].state = MQTT_SUBSCRIBE_PUBLISH_ACKED; // Publish Ack has been sent
 			}
 			else if (aRxPublish->headerflags.BA.QoS == 2){
-		aRxPublish->subscription_index = ret_index; // Speichert den Index der zugehörigen Subscription
+		aRxPublish->subs_index = ret_index; // Speichert den Index der zugehörigen Subscription
 				// sendet ein Pubrec
 				mqtt_client_var->countSendData = createMqttPubrec(mqtt_client_var->pSendData, aRxPublish->message_id);
 				aSubscriptions[ret_index].state = MQTT_SUBSCRIBE_PUBLISH_REC; // Publish Rec has been sent
@@ -720,9 +722,9 @@ Subscription* pSubscriptionStruct;
 	}
 	if ((isMqttPubRel(RxBuffer, aRxPublish))){
 		// sendet ein Pubcomp
-	aSubscriptions[aRxPublish->subscription_index].state = MQTT_SUBSCRIBE_PUBLISH_REL; // Publish Rel has been received 
+	aSubscriptions[aRxPublish->subs_index].state = MQTT_SUBSCRIBE_PUBLISH_REL; // Publish Rel has been received 
 		mqtt_client_var->countSendData = createMqttPubcomp(mqtt_client_var->pSendData, aRxPublish->message_id);
-		aSubscriptions[aRxPublish->subscription_index].state = MQTT_SUBSCRIBE_PUBLISH_COMP; // Publish Comp has been sent
+		aSubscriptions[aRxPublish->subs_index].state = MQTT_SUBSCRIBE_PUBLISH_COMP; // Publish Comp has been sent
 	}
 	return 0;
 }
