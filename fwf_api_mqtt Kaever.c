@@ -108,7 +108,7 @@ static Unsubscription aUnsubscriptions[MaxSubscriptions_of_this_Node];
 static int UnsubCount = 0;
 static PublishContext 	 aPublish[MaxPublishStructs_of_this_Node];
 static UINT8 PublishCount = 0;
-static RxPublish  aRxPublish[1];
+
 
 static struct uip_TCP_conn* MQTT_Client_uip_TCP_conn; 	// Die Connenction-Struktur des MQTT_Client
 

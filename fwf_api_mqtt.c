@@ -59,7 +59,8 @@ date    11.2020
 #include "uip.h"					// command_execution_time
 
 
-//#if  USE_MQTT_SERVER
+#if  USE_MQTT_NODE
+
 #include "mqttc.h"
 
 // VORSICHT : Fuer Strukturgleichheit mit struct http_state im allgemeinen Teil sorgen!!!!
@@ -74,8 +75,9 @@ typedef struct tcp_MQTT_Server_hasMsg_vars {
 
 
 // Statische Variable
-static TCP_MQTT_SERVER_CONTEXT	    *tcp_server_var; // Datenkontext des Servers
+
 static TCP_MQTT_CLIENT_CONTEXT		*mqtt_client_var; // Datenkontext des Client
+
 static UINT8 *rx_MQTT_msg;   		/* The uip_appdata pointer points to received application data. */
 static UINT8 MQTT_response[1500]; 	// Buffer zur Generierung von Antworten
 
@@ -91,26 +93,31 @@ FWF_COM_RESPONSE  fwf_com_tcp_resp;
 
 
 // Lokale Funktionen
+#if  USE_MQTT_BROKER
+static TCP_MQTT_SERVER_CONTEXT	    *tcp_server_var; // Datenkontext des Servers
 static void   MQTT_Server_on_disconnect(void);
 static UINT16 MQTT_Server_on_connect(void);
+#endif  // USE_MQTT_BROKER
 
 // Lokale Strukturen
 static PubSubClient* pPubSubClient;
 //static MqttConnect*  pMqttConnect;
 static Subscription  aSubscriptions   [MaxSubscriptions_of_this_Node];
-static int SubCount = 0;
+static int SubCount 	= 0;
 static Unsubscription aUnsubscriptions[MaxSubscriptions_of_this_Node];
-static int UnsubCount = 0;
-static PublishContext 	 aPublish[MaxPublishStructs_of_this_Node];
+static int UnsubCount 	= 0;
+static PublishNodeContext 	 aPublish[MaxPublishStructs_of_this_Node];
 static UINT8 PublishCount = 0;
+// static PublishBrokerContext aRxPublish[1];
 
-static struct uip_TCP_conn* MQTT_Client_uip_TCP_conn; // Die Connenction-Struktur des MQTT_Client
+static struct uip_TCP_conn* MQTT_Client_uip_TCP_conn; 	// Die Connenction-Struktur des MQTT_Client
 
-UINT8 mqtt_PublishStructALLInit(void);
-UINT8 mqtt_PublishStructInit(PublishContext* aPublish, UINT16 msgId, char* name, UINT8 headerFlags, UINT32 publishPeriod);
+UINT8 mqtt_PublishStructALLInit(PublishNodeContext aPub[]);
+UINT8 mqtt_PublishStructInit(PublishNodeContext* aPublish, UINT16 msgId, char* name, UINT8 headerFlags, UINT32 publishPeriod);
 
 UINT8 mqtt_SubscribeStructALLInit(void);
-UINT8 mqtt_SubscribeStructInit(Subscription* aSubscriptions, UINT16 msgId, char* name, UINT8 QoS);
+
+
 
 void MQTT_init(void){
 	MQTT_function_block.app_status.msg_version = FWF_APP_MQTT_INTERFACEVERSION;
@@ -125,7 +132,7 @@ void MQTT_init(void){
 	switch_event_msg_switch_event 	= 0;
 }
 
-void MQTT_Client_init(void){
+void MQTT_Client_init(void){ // MQTT Node Initialisierung
 Union32 ip;
 	ip.U8[0] = 10;
 	ip.U8[1] = 0;
@@ -133,7 +140,7 @@ Union32 ip;
 	ip.U8[3] = 1;
 
     //TCP-Connection for MQTT_Client
-    MQTT_Client_uip_TCP_conn 		= uip_tcp_connect(ip.U16, htons(MQTT_PORT), MQTT_Client);
+    MQTT_Client_uip_TCP_conn 		= uip_tcp_connect(ip.U16, htons(MQTT_PORT), fwf_MQTT_Node);
 	mqtt_client_var					= (TCP_MQTT_CLIENT_CONTEXT *) MQTT_Client_uip_TCP_conn->appstate;
 	mqtt_client_var->state 			= MQTT_FSM_TCP_SYN_SENT;
 	mqtt_client_var->pSendData		= MQTT_response;
@@ -143,153 +150,41 @@ Union32 ip;
     pPubSubClient 	= PubSubConstructor(mqtt_client_var);
     pPubSubClient->connected = 0;
 
-    PublishCount = mqtt_PublishStructALLInit();
+    PublishCount = mqtt_PublishStructALLInit(aPublish);
+    SubCount	 = mqtt_SubscribeStructALLInit();
 }
 
-// PUBLISH ===============================================================================================
 
-UINT8 mqtt_PublishStructALLInit(void){
-UINT8 index = 0;
-	mqtt_PublishStructInit(&aPublish[index++], 1, "/analog1", MQTTQOS0 | MQTT___RETAIN, 4500 );
-	mqtt_PublishStructInit(&aPublish[index++], 1, "/AnaIn2", MQTTQOS0 | MQTT_NoRETAIN, 6000 );
-	return index;
-}
+// SUBSCRIBE ===============================================================================================
 
 UINT8 mqtt_SubscribeStructALLInit(void){
 UINT8 index = 0;
-	mqtt_SubscribeStructInit(&aSubscriptions[index++], 1, "/analog1", 0 );
-	mqtt_SubscribeStructInit(&aSubscriptions[index++], 1, "/AnaIn2", 0);
+	 mqtt_SubscribeStructInit(&aSubscriptions[index++], 1, "STM_Step/analog1", 0 );
+	// mqtt_SubscribeStructInit(&aSubscriptions[index++], 1, "/AnaIn2", 0);
 	return index;
 }
 
-// Alle relevanten PublishStruct's (topicLen) auf MQTT_PUBLISH_Scheduled setzen
-void mqtt_PublishStructALL_SetPublishScheduled(void){
-UINT8 index = 0;
+
+
+
+// PUBLISH ===============================================================================================
+
+UINT8 mqtt_PublishStructALLInit(PublishNodeContext aPub[]){
+UINT8 index;
 	for (index = 0 ; index < MaxPublishStructs_of_this_Node; index++){
-		if(  aPublish[index].topicLen &&
-			( MQTT_PUBLISH_SENT == aPublish[index].state)
-				){
-			aPublish[index].state = MQTT_PUBLISH_Scheduled;
-		}
+		aPub[index].topicLen = 0;
 	}
-}
-
-// gibt es eine erforderliche Aktivitaet bei einer Publish-Struktur?
-// array aPublish[] durchsuchen
-// Bei timeout alle aPublish durch mqtt_PublishStructALL_SetPublishScheduled()
-PublishContext* mqtt_find_PublishStruct_which_are_Scheduled (void){
-UINT8 index = 0;
-	for (index = 0 ; index < MaxPublishStructs_of_this_Node; index++){
-		if(!(aPublish[index].topicLen)) break;
-		if( (MQTT_PUBLISH_FirstPublishRequired == aPublish[index].state) ){			// first publish required?
-			aPublish[index].state = MQTT_PUBLISH_Scheduled;
-			return &aPublish[index];
-		}
-		if(	uC.timer_1ms >	(aPublish[index].lastPublishActivity + aPublish[index].PublishPeriod )  ){ // Timeout exceeded?
-			aPublish[index].state = MQTT_PUBLISH_Scheduled;
-			mqtt_PublishStructALL_SetPublishScheduled(); 		// alle auf MQTT_PUBLISH_Scheduled setzen
-			break; // Array von Anfang an bearbeiten
-		}
-	}
-	for (index = 0 ; index < MaxPublishStructs_of_this_Node; index++){
-		if(!(aPublish[index].topicLen)) break;
-		if( (MQTT_PUBLISH_Scheduled == aPublish[index].state) ){			// first publish required?
-			aPublish[index].state = MQTT_PUBLISH_Scheduled;
-			return &aPublish[index];
-		}
-	}
-	return 0; // Keine Aktivitaet erforderlich
-}
-
-Subscriptions* mqtt_find_SubscriptionStruct_which_are_Scheduled(void){
-	UINT8 index = 0;
-	
-	for (index = 0 ; index < MaxSubscriptions_of_this_Node; index++){
-		if(!(aSubscriptions[index].topicLen)) break;
-		if( (MQTT_SUBSCRIBE_FirstSubscribeRequired == aSubscriptions[index].state) ){			// first publish required?
-			aSubscriptions[index].state = MQTT_SUBSCRIBE_Scheduled;
-			return &aSubscriptions[index];
-		}
-	}
-		for (index = 0 ; index < MaxSubscriptions_of_this_Node; index++){
-		if(!(aSubscriptions[index].topicLen)) break;
-		if( (MQTT_SUBSCRIBE_Scheduled == aSubscriptions[index].state) ){			// first publish required?
-			aSubscriptions[index].state = MQTT_SUBSCRIBE_Scheduled;
-			return &aSubscriptions[index];
-		}
-	}
-	return 0; // Keine Aktivitaet erforderlich
-}
-
-
-// Return: Laenge der TxMsg MQTT_Msg_Length +2
-UINT16 createPublishMsg(PublishContext* pPubCon, UINT8 *TxBuf){
-UINT16 len ;
-UINT16 len_val;
-float  value = 0.123456;
-	if( MQTT_PUBLISH_Scheduled == pPubCon->state){
-		if(!(pPubCon->topicLen)) return 0;
-		TxBuf[0] = pPubCon->headerflags.U8 ;  							// 0: 	Header
-		len = sprintf((char*)&TxBuf[4],"%s%s",uC.controller_name, pPubCon->topic_name);
-		TxBuf[2] = (UINT8)(len >> 8);									// 2:3	Topic_Length
-		TxBuf[3] = (UINT8)(len );
-		len_val = sprintf((char*)&TxBuf[4 + len],"%f",value);
-		TxBuf[1] = len + len_val; 										// 1: 	MQTT_Msg_Length
-		pPubCon-> state =  MQTT_PUBLISH_SENT;
-		pPubCon->lastPublishActivity = uC.timer_1ms;
-	    return TxBuf[1] +2;												// Laenge der Nachricht ist MQTT_Msg_Length +2
-	}
-	return 0;
-}
-
-UINT16 createSubscribeReqMsg(Subscriptions* pSubscribe, UINT8 *TxBuff) {
-    UINT16 len;
-    if (pSubscribe->state == MQTT_SUBSCRIBE_Scheduled) {
-        if (!(pSubscribe->topicLen)) return 0;
-        TxBuf[0] = pSubscribe->headerflags.U8; // Header
-        len = sprintf((char*)&TxBuf[4], "%s", pSubscribe->topic_name);
-        TxBuf[2] = (UINT8)(len >> 8);  // Topic_Length
-        TxBuf[3] = (UINT8)(len);
-        TxBuf[1] = 2 + len + 1;  // MQTT_Msg_Length = 2 Bytes Topic_Length + len for topics + Qos
-        TxBuf[4 + len] = pSubscribe->QoS; // QoS level
-        pSubscribe->state = SUBSCRIBE_SENT;
-        return TxBuf[1] + 2;  // Length of the message is MQTT_Msg_Length + 2
-    }
-    return 0;
-}
-
-}
-
-
-
-UINT8 mqtt_PublishStructInit(PublishContext* aPublish, UINT16 msgId, char* name, UINT8 HeaderFlags, UINT32 publishPeriod){
-	aPublish->state = MQTT_PUBLISH_FirstPublishRequired;
-	aPublish->headerflags.U8 = MQTTPUBLISH | HeaderFlags;
-	aPublish->message_id = msgId;
-	strcpy(aPublish->topic_name, name);
-	aPublish->topicLen  = strlen(name);
-	aPublish->remainingLenght = 5;
-	aPublish->CleanSession = 0;
-	aPublish->PublishPeriod = publishPeriod;
-	return 0;
-}
-
-UINT8 mqtt_SubscribeStructInit(Subscription* aSubscriptions, UINT16 msgId, char* name, UINT8 QoS){
-	aSubscriptions->state = MQTT_SUBSCRIBE_FirstSubscribeRequired;
-	aSubscriptions->headerflags.U8 = MQTTSUBSCRIBE | 2; // 2 für reserved flags
-	aSubscriptions->message_id = msgId;
-	strcpy(aSubscriptions->topic_name, name);
-	aSubscriptions->topicLen  = strlen(name);
-	aSubscriptions->remainingLenght = 5;
-	aSubscriptions->QoS = Qos;
-	return 0;
+	index = 0;
+	mqtt_PublishStructInit(&aPub[index++], 1, "/analog1", MQTTQOS0 | MQTT___RETAIN, 4500 );
+	// mqtt_PublishStructInit(&aPub[index++], 1, "/AnaIn2",  MQTTQOS0 | MQTT_NoRETAIN, 6000 );
+	return index;
 }
 
 
 //===============================================================================================
 
 
-// Aufruf bei Verbindungsaufbau des Servers mit einem externen Client
+// Aufruf bei Verbindungsaufbau des TCP-Servers mit einem externen Client
 UINT16  MQTT_Client_create_connect(UINT8*  buffer){
 UINT16 var;
 UINT8  index = 2; // Laenge der zu sendenden Nachricht
@@ -317,37 +212,6 @@ UINT8  index = 2; // Laenge der zu sendenden Nachricht
 }
 
 
-// Aufruf bei Verbindungsaufbau des Servers mit einem externen Client
-UINT16  MQTT_Server_on_connect(void){
-    tcp_server_var 					= (TCP_MQTT_SERVER_CONTEXT *)(uip_tcp_conn->appstate);
-	tcp_server_var->state 			= MQTT_FSM_AWAIT_INIT;
-    tcp_server_var->pSendData 		= MQTT_response;
-	tcp_server_var->countSendData 	= 0; // kein Sendebedarf
-
-#if 0 // Server = Broker => nicht implementiert
-    // MQTT-Library initialisieren
-    pPubSubClient 	= PubSubConstructor(uip_tcp_conn);
-    pMqttConnect  	= MqttConnectKonstruktor(pPubSubClient);
-#endif
-    return 0;	// kein Sendebedarf
-}
-
-
-// UINT8 createMqttDisconnect(UINT8* buffer) {
-//     buffer[0] = MQTTDISCONNECT;
-//     buffer[1] = 0;
-
-//     return 2;
-// }
-
-void MQTT_Server_on_disconnect(void){
-    // createMqttDisconnect(pPubSubClient);
-    tcp_server_var 				= (TCP_MQTT_SERVER_CONTEXT *)(uip_tcp_conn->appstate);
-	tcp_server_var->state 		= MQTT_FSM_END; 	//welcher State?
-    tcp_server_var->pSendData 	= (UINT8*)disconnect(pPubSubClient);
-    tcp_server_var->countSendData = 2; // Laenge eines Disconnect-Pakets
-}
-
 
 // Anlegen von Subscription-Requests in aSubscriptions[]
 UINT8 isMqttSubscribeRequest(UINT8 *buffer, UINT16 msg_length){
@@ -363,7 +227,7 @@ UINT8 	subscription_index 	= 0;
 		subscript->message_id   = (buffer[buf_index+2] << 8) + buffer[buf_index+3]; 				// Message ID
 		subscript->topic_length = (buffer[buf_index+4] << 8) + buffer[buf_index+5];
 		strncpy( subscript->topic_name, (char*) &buffer[buf_index+6],  subscript->topic_length);  	// topic_name
-		subscript->Qos 		= buffer[buf_index+ 6 + subscript->topic_length]; 						// Quality of service
+		subscript->QoS 		= buffer[buf_index+ 6 + subscript->topic_length]; 						// Quality of service
 		subscript->acked 	= 0;
 
 		buf_index += 2 + mqtt_msg_len;
@@ -380,12 +244,12 @@ UINT16 createMqttSuback(UINT8 *buffer, UINT8 subscription_index) {	// Subscribe 
 	buffer[0] 	= MQTTSUBACK ;//+ 3;     	// Packet Type
 	buffer[2]   = aSubscriptions[subscription_index].message_id  >> 8; 	// set MsgID
 	buffer[3]   = aSubscriptions[subscription_index].message_id;
-    buffer[4] 	= aSubscriptions[subscription_index].Qos; 					// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
+    buffer[4] 	= aSubscriptions[subscription_index].QoS; 					// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
 	buf_index 	= 4;
 	subscription_index ++;
 	while(subscription_index < MaxSubscriptions_of_this_Node) {
 		if( !aSubscriptions[subscription_index].message_id ) break;			// Naechste aSubscription valide?
-	    buffer[buf_index] = aSubscriptions[subscription_index].Qos;			// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
+	    buffer[buf_index] = aSubscriptions[subscription_index].QoS;			// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
 	    aSubscriptions[subscription_index].acked = 1;
 	    buf_index ++ ;
 	    subscription_index ++;
@@ -398,7 +262,7 @@ UINT16 createMqttSuback(UINT8 *buffer, UINT8 subscription_index) {	// Subscribe 
     buffer[1] = 3;     				   // Remaining Length
     buffer[2] = aSubscriptions[subscription_index].message_id  >> 8; // set MsgID
     buffer[3] = aSubscriptions[subscription_index].message_id;
-    buffer[4] = aSubscriptions[subscription_index].Qos;				// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
+    buffer[4] = aSubscriptions[subscription_index].QoS;				// Maximaler QoS, der etabliert wird, derzeit alles auf QoS 0
     return 5;
 #endif
 }
@@ -471,11 +335,11 @@ void deleteMqttSubscription(Subscription* subscript){
     memset(subscript->topic_name, 0, sizeof(subscript->topic_name));
     subscript->topic_length = 0;
     subscript->message_id = 0;
-    subscript->Qos = 0;
+    subscript->QoS = 0;
     SubCount--;
 }
 
-UINT8 isMqttPublishRequest(UINT8 *buffer, PublishContext* publ){
+UINT8 isMqttPublishRequest(UINT8 *buffer, PublishNodeContext* publ){
     UINT16 len, remaining_length;
 
     if((buffer[0]& 0xf0)!= MQTTPUBLISH) return 0; //bit 4-7
@@ -518,7 +382,7 @@ UINT8 isMqttPublishRequest(UINT8 *buffer, PublishContext* publ){
     return 1;
 }
 
-int CheckTopicPub(PublishContext* publ){
+int CheckTopicPub(PublishNodeContext* publ){
     for(int i = 0; i < MaxPublishStructs_of_this_Node; i++){
         if( aPublish[i].topic_name == publ->topic_name){ // ToDo strcmp()
             return i;
@@ -528,55 +392,6 @@ int CheckTopicPub(PublishContext* publ){
     return -1;
 }
 
-// MQTT Connect ==============================================
-UINT8 isMqttConnect(UINT8 *buffer){
-	if(buffer[0] != MQTTCONNECT ) return 0;
-	if(buffer[2] !=  0)  return 0; // MQTT-Laenge
-	if(buffer[3] !=  4)  return 0; // MQTT-Laenge
-	if(buffer[4] != 'M') return 0;
-	if(buffer[5] != 'Q') return 0;
-	if(buffer[6] != 'T') return 0;
-	if(buffer[7] != 'T') return 0;
-	return 1;
-}
-UINT8 createMqttConnectACK(UINT8 *buffer){
-	buffer[0] = MQTTCONNACK;
-	buffer[1] = 2;				// Length
-	buffer[2] = 0;				// Acknowledge Flags
-	buffer[3] = 0;				// Connection accepted
-	return 4;
-}
-
-UINT8 isMqttConnectACK(UINT8 *buffer){
-	if(buffer[0] != MQTTCONNACK ) return 0;
-	if(buffer[1] !=  2)  return 0; // MQTT-Laenge
-	if(buffer[2] !=  0)  return 0; // MQTT Ack Flag
-	if(buffer[3] !=  0)  return 0; // MQTT Return Code
-	return 1;
-}
-
-
-// PING ===========================================================
-UINT8 createMqttPingReq(UINT8 *buffer){
-    buffer[0] = MQTTPINGREQ;  	// Fixed Header nur 1 byte
-    buffer[1] = 0;  			// Fixed Header nur 1 byte
-    return 2; //
-}
-UINT8 isMqttPingRequest(UINT8 *buffer){
-    if((buffer[0] & 0xf0) != MQTTPINGREQ) return 0; //Fixed Header nur 1 byte
-    return 1;
-}
-
-UINT8 createMqttPingResp(UINT8 *buffer){
-    buffer[0] = MQTTPINGRESP;  // Fixed Header nur 1 byte
-    buffer[1] = 0;  // Fixed Header nur 1 byte
-    return 2; //warum 4?
-}
-UINT8 isMqttPingResp(UINT8 *buffer){
-    if((buffer[0]& 0xf0) != MQTTPINGRESP) return 0;
-    pPubSubClient->pingOutstanding = false;
-    return 1;
-}
 
 //======================================================================================================
 //======================================================================================================
@@ -585,7 +400,7 @@ UINT8 isMqttPingResp(UINT8 *buffer){
 
 // Rolle eines MQTT Node
 // Call fuer TCP_connection SYN erfolgt ausserhalb von MQTT_Client
-void MQTT_Client(u8_t uip_flags){
+void fwf_MQTT_Node(u8_t uip_flags){
     if(uip_tcp_conn->lport == 0) uip_abort();	// Kein Serverport
 
 	switch (	mqtt_client_var->state){
@@ -641,8 +456,135 @@ void MQTT_Client(u8_t uip_flags){
 
 
 
+// MQTT CLIENT ========================================================================================================
+// Bearbeiten von Requests an MQTT Client und generieren einer Antwort in mqtt_client_var->pSendData
+// RxBuffer: Buffer der eingehenden MQTT-Response
+// Return: Laenge der TxMsg
+UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer, UINT16 msg_Rx_len){
+char* topic;
+Subscription* pSubscriptionStruct;
+int ret_index = 0;
+static PublishBrokerContext *tmpRxPublish[1]; // temporäre Speicherung vor Erkennung der zugehörigen Subscription
+
+	if( isMqttPingResp(pPubSubClient, RxBuffer) ){
+		pPubSubClient->pingOutstanding = false;
+	}
+	if( (pSubscriptionStruct = isMqttSubscribeAck(aSubscriptions, RxBuffer, msg_Rx_len, MaxSubscriptions_of_this_Node) ) ){ // Subscribe Acknowledgement erhalten und Subscription mit übereinstimmenden Message_ID (pSubscriptionStruct)
+		// State wird in isMqttSubscribeAck() gesetzt
+		// ToDo: Debugging
+		uCdbg_logv_entry("SubscriptionACK:%",pSubscriptionStruct->topic_name);
+	}
+
+	if( (isMqttRxPublish(RxBuffer, tmpRxPublish))){	// Prüft ob der eingehende Buffer ein Publish ist und speichert die Daten in tmpRxPublish
+		// checkt ob der publish topic auch in einer Subscription mit state = MQTT_SUBSCRIBE_ACKED ist
+
+		if (!(ret_index = CheckTopicRxPub(aSubscriptions, tmpRxPublish, MaxSubscriptions_of_this_Node))) return 0;
+		int QoS = aSubscriptions[ret_index]->RxPublish->headerflags.BA.QoS;
+		// wenn QoS = 0, dann wird keine Antwort gesendet, ansonsten: Puback oder Pubrec
+		if (QoS > 0){
+			if (QoS == 1){
+				// sendet ein Puback
+				aSubscriptions[ret_index].state = MQTT_SUBSCRIBE_PUBLISH_ACKED; // Publish Ack has been sent
+				return createMqttPuback(mqtt_client_var->pSendData, aSubscriptions[ret_index]->RxPublish->message_id);
+			}
+			else if (QoS == 2){
+				//aRxPublish->subs_index = ret_index; // Speichert den Index der zugehörigen Subscription
+				// sendet ein Pubrec
+				aSubscriptions[ret_index].state = MQTT_SUBSCRIBE_PUBLISH_REC; // Publish Rec has been sent
+				return createMqttPubrec(mqtt_client_var->pSendData, aSubscriptions[ret_index]->RxPublish->message_id);
+			}
+		}
+		// ToDo Output_Publish(aRxPublish->topic_name, aRxPublish->payload, aRxPublish->payloadLen); // Output von Publish
+		// Speichern der Publish
+		// Output von Publish
+	}
+	if ((isMqttPubRel(RxBuffer, aRxPublish))){ // QoS2
+		// sendet ein Pubcomp
+#if 0
+		aSubscriptions[aRxPublish->subs_index].state = MQTT_SUBSCRIBE_PUBLISH_REL; // Publish Rel has been received
+		mqtt_client_var->countSendData = createMqttPubcomp(mqtt_client_var->pSendData, aRxPublish->message_id); // Publish complete
+		aSubscriptions[aRxPublish->subs_index].state = MQTT_SUBSCRIBE_PUBLISH_COMP; // Publish Comp has been sent
+#endif
+	}
+	return 0;
+}
+
+// Bearbeiten von Messages, die der MQTT Client absetzen soll - und generieren einer Antwort in TxBuffer
+// Return: Laenge der TxMsg
+UINT16 MQTT_Client_MsgOutstanding(UINT8 * TxBuffer){
+PublishNodeContext* pPublishStruct;
+Subscription *pSubscriptionStruct;
+UINT16 bytes_to_send = 0;
+
+	if( (uC.timer_1ms - mqtt_client_var->mqtt_ping_time ) > MQTT_CLIENT_PING_INTERVAL){ // Ping erzeugen
+		if(true == pPubSubClient->pingOutstanding){ // Server antwortete nicht
+			uip_abort();
+		}
+		mqtt_client_var->mqtt_ping_time = uC.timer_1ms ;
+		pPubSubClient->pingOutstanding = true;
+		return createMqttPingReq(TxBuffer);
+	}
+	if ( (pSubscriptionStruct = mqtt_find_SubscriptionStruct_which_are_Scheduled(aSubscriptions, MaxSubscriptions_of_this_Node) )){
+		do {
+			bytes_to_send += createSubscribeReqMsg( pSubscriptionStruct , &TxBuffer[bytes_to_send]);
+		}
+		while ( (pSubscriptionStruct = mqtt_find_SubscriptionStruct_which_are_Scheduled(aSubscriptions, MaxSubscriptions_of_this_Node )));
+		return bytes_to_send;
+	}
+
+	if ( (pPublishStruct = mqtt_find_PublishStruct_which_are_Scheduled(aPublish, MaxPublishStructs_of_this_Node ) ) ){
+		do {
+			bytes_to_send += createPublishMsg( pPublishStruct , &TxBuffer[bytes_to_send]);
+		}
+		while ( (pPublishStruct = mqtt_find_PublishStruct_which_are_Scheduled (aPublish, MaxPublishStructs_of_this_Node )) ); // Processing einer einzelnen PublishStruct
+		return bytes_to_send;
+	}
+
+
+	while ( (pPublishStruct = mqtt_find_PublishStruct_which_are_Scheduled (aPublish, MaxPublishStructs_of_this_Node)) ){ // Processing einer PublishStruct
+		bytes_to_send += createPublishMsg( pPublishStruct , &TxBuffer[bytes_to_send]);
+	}
+	return bytes_to_send;
+}
+
+
+
+#if  USE_MQTT_BROKER
+
+// Aufruf bei Verbindungsaufbau des Servers (Broker) mit einem externen Client (Node)
+UINT16  MQTT_Server_on_connect(void){
+    tcp_server_var 					= (TCP_MQTT_SERVER_CONTEXT *)(uip_tcp_conn->appstate);
+	tcp_server_var->state 			= MQTT_FSM_AWAIT_INIT;
+    tcp_server_var->pSendData 		= MQTT_response;
+	tcp_server_var->countSendData 	= 0; // kein Sendebedarf
+
+#if 0 // Server = Broker => nicht implementiert
+    // MQTT-Library initialisieren
+    pPubSubClient 	= PubSubConstructor(uip_tcp_conn);
+    pMqttConnect  	= MqttConnectKonstruktor(pPubSubClient);
+#endif
+    return 0;	// kein Sendebedarf
+}
+
+// UINT8 createMqttDisconnect(UINT8* buffer) {
+//     buffer[0] = MQTTDISCONNECT;
+//     buffer[1] = 0;
+
+//     return 2;
+// }
+
+void MQTT_Server_on_disconnect(void){
+    // createMqttDisconnect(pPubSubClient);
+    tcp_server_var 				= (TCP_MQTT_SERVER_CONTEXT *)(uip_tcp_conn->appstate);
+	tcp_server_var->state 		= MQTT_FSM_END; 	//welcher State?
+    tcp_server_var->pSendData 	= (UINT8*)disconnect(pPubSubClient);
+    tcp_server_var->countSendData = 2; // Laenge eines Disconnect-Pakets
+}
+
+
+// MQTT SERVER ========================================================================================================
 // TCP Interpreter fuer MQTT - Rolle des BROKERs ===========================================================
-void fwf_MQTT_server(u8_t flag) {
+void fwf_MQTT_Broker(u8_t flag) {
 int i;
 char tcp_cmd  [TCP_CMD_SIZE]  = "";
 char tcp_par1 [TCP_PAR1_SIZE] = "";
@@ -723,12 +665,12 @@ UINT8 channel = 0;          // from received message extracted channel (PWM-,ADC
             rx_MQTT_msg[uip_len] = 0;       // terminate string for scanning
             MQTT_response[0] = 0;     		// erase datapointer for the data that will be sent back
 
-#if USE_MQTT_SERVER
+#if USE_MQTT_NODE
 #if FWF_APP_STEPPER_STMdrv
             STEPPER_STM_MQTT_Interpreter(rx_MQTT_msg);
 #endif // FWF_APP_STEPPER_STMdrv
 
-#endif // USE_MQTT_SERVER
+#endif // USE_MQTT_NODE
 
             // extract tcp_cmd, tcp_par1, tcp_par2 from received data
             // nicht effizient, fuer die Anwendung aber unkritisch und einfacher zu debuggen
@@ -801,6 +743,8 @@ UINT8 channel = 0;          // from received message extracted channel (PWM-,ADC
 	}
 }
 
+// MQTT SERVER ========================================================================================================
+
 // Search aSubscriptions that has not been acknowledged
 UINT8 NextOpenSuback(void){
 	UINT8 index = 0;
@@ -809,7 +753,6 @@ UINT8 NextOpenSuback(void){
 	}
 	return MaxSubscriptions_of_this_Node; // not found
 }
-
 
 // Erzeugen von spontanen Nachrichten des MQTT Servers
 // pMsg: Buffer fuer ausgehende Nachricht
@@ -825,92 +768,6 @@ UINT8 index = 0;
 	}
 }
 
-char* isMqttSubscribeAck(UINT* RxBuffer){
-	char topic[20];
-	return topic;
-	//TODO: schreiben
-}
-
-bool match_topics(char* topic, char* sub_topic) {
-    int size_topic = strlen(topic); 
-    int size_sub_topic = strlen(sub_topic);
-
-    if (size_topic != size_sub_topic)
-        return false;
-
-    for (int i = 0; i < size_sub_topic; i++) {
-        if (topic[i] != sub_topic[i]) 
-            return false;
-    }
-
-    return true;
-}
-
-
-Subscriptions* search_Subscription_topic_match(char* topic){
-	UINT8 index = 0;
-	for (index = 0; index < MaxSubscriptions_of_this_Node; index++){
-		if(match_topics(topic, aSubscriptions[index].topic))
-			return aSubscriptions[index];
-	}
-	return NULL;
-}
-
-// Bearbeiten von Requests an MQTT Client und generieren einer Antwort in mqtt_client_var->pSendData
-// RxBuffer: Buffer der eingehenden MQTT-Response
-// Return: Laenge der TxMsg
-UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer, UINT16 msg_Rx_len){
-	if( isMqttPingResp(RxBuffer) ){
-		pPubSubClient->pingOutstanding = false;
-	}
-	if( char* topic = isMqttSubscribeAck(RxBuffer)){
-		Subscriptions* pSubscriptionStruct;
-		if(search_Subscription_topic_match(topic) != NULL)
-		pSubscriptionStruct = search_Subscription_topic_match(topic);
-	}
-	return 0;
-}
-// Bearbeiten von Messages, die der MQTT Client absetzen soll - und generieren einer Antwort in TxBuffer
-// Return: Laenge der TxMsg
-UINT16 MQTT_Client_MsgOutstanding(UINT8 * TxBuffer){
-PublishContext* pPublishStruct;
-Subscriptions* pSubscriptionStruct;
-UINT16 bytes_to_send = 0;
-
-	if( (uC.timer_1ms - mqtt_client_var->mqtt_ping_time ) > MQTT_CLIENT_PING_INTERVAL){ // Ping erzeugen
-		if(true == pPubSubClient->pingOutstanding){ // Server antwortete nicht
-			uip_abort();
-		}
-		mqtt_client_var->mqtt_ping_time = uC.timer_1ms ;
-		pPubSubClient->pingOutstanding = true;
-		return createMqttPingReq(TxBuffer);
-	}
-
-	if ( (pSubscriptionStruct = mqtt_find_SubscriptionStruct_which_are_Scheduled() )){
-		do {
-			bytes_to_send += createSubscribeReqMsg( pPublishStruct , &TxBuffer[bytes_to_send]);	
-		}
-		while ( (pSubscriptionStruct = mqtt_find_SubscriptionStruct_which_are_Scheduled()))
-		return bytes_to_send;
-	}
-
-	if ( (pPublishStruct = mqtt_find_PublishStruct_which_are_Scheduled() ) ){
-		do {
-			bytes_to_send += createPublishMsg( pPublishStruct , &TxBuffer[bytes_to_send]);	
-		}
-		while ( (pPublishStruct = mqtt_find_PublishStruct_which_are_Scheduled ()) ){ // Processing einer PublishStruct
-		return bytes_to_send;
-	}
-
-
-	// while ( (pPublishStruct = mqtt_find_PublishStruct_which_are_Scheduled ()) ){ // Processing einer PublishStruct
-	// 	bytes_to_send += createPublishMsg( pPublishStruct , &TxBuffer[bytes_to_send]);
-	// }
-// return bytes_to_send;
-	
-	
-}
-
 // Bearbeiten von Requests an MQTT Server und generieren einer Antwort in tcp_server_var->pSendData
 // Return: Laenge der TxMsg
 UINT16 MQTT_ServerRequest_to_Response(UINT8 *rx_MQTT_msg, UINT16 msg_len){
@@ -918,12 +775,12 @@ UINT8 ret_index;
 	if( isMqttPingRequest(rx_MQTT_msg)){
 		return createMqttPingResp((UINT8*)tcp_server_var->pSendData);
 	}
-    if( isMqttSubscribeRequest(rx_MQTT_msg, msg_len)){ 							//  Subscription ? for Broker Role
+    if( isMqttSubscribeRequest(rx_MQTT_msg, msg_len)){ 				//  Subscription ? for Broker Role
     	return createMqttSuback((UINT8*)tcp_server_var->pSendData, NextOpenSuback() );
     }
     if(isMqttUnsubscribeRequest(rx_MQTT_msg, msg_len)){ 			// UnSubscription ? for Broker Role
     	ret_index = CheckTopicUn(&aUnsubscriptions[UnsubCount]); 	// valide Unsubscription?
-        if ( ret_index >= 0 || ret_index < 10){
+        if ( ret_index >= 0 || ret_index < MaxSubscriptions_of_this_Node){
             // send / create Unsuback
             deleteMqttSubscription(&aSubscriptions[ret_index]);
             UnsubCount++;
@@ -944,6 +801,7 @@ UINT8 ret_index;
     return 0;
 }
 
+#endif // USE_MQTT_BROKER
 
 
 // TEST SUPPORT
@@ -951,4 +809,4 @@ UINT8 ret_index;
 
 
 
-#endif // USE_MQTT_SERVER
+#endif // USE_MQTT_NODE

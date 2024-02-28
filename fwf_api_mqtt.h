@@ -64,32 +64,32 @@ typedef struct {
 // Strukturdefinition zur Steuerung der MQTT-SM
 typedef struct {
     UINT8				msg_publish_event;		//  Publish event: Nachricht zu versenden
-    MQTT_APPSTATUS 	app_status;
+    MQTT_APPSTATUS 		app_status;
 } MQTT_FUNCTION_BLOCK;
 
 #define MQTT_TIMEOUT_IN_MS				50
 
-//#if USE_MQTT_SERVER
+#if USE_MQTT_NODE
 // #define MQTT_PORT 				1883
 
-//#if _FWF_APP_MQTT_MODULE_C
+#if _FWF_APP_MQTT_MODULE_C
 #define extern
 #endif
 
 #undef extern
 
 
-//#if _FWF_APP_MQTT_MODULE_C
+#if _FWF_APP_MQTT_MODULE_C
 
 #define TCP_CMD_SIZE  10
 #define TCP_PAR1_SIZE 4
 #define TCP_PAR2_SIZE 10
 
+#endif //_FWF_APP_MQTT_MODULE_C
 
 #define MaxSubscriptions_of_this_Node	10
 #define MaxPublishStructs_of_this_Node  5
 
-#endif //_FWF_APP_MQTT_MODULE_C
 
 // Standardfunktionen fuer Aufrufinterface
 void MQTT_init(void);
@@ -99,17 +99,17 @@ UINT16  MQTT_Client_create_connect(UINT8*  buffer);
 
 // Call fuer TCP_connection
 
-void   MQTT_Client(u8_t flag);
+void   fwf_MQTT_Node(u8_t flag);
 UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer, UINT16 msg_Rx_len);
 UINT16 MQTT_Client_MsgOutstanding(UINT8 * TxBuffer);
 
 
-void   fwf_MQTT_server(u8_t flag);
+void   fwf_MQTT_Broker(u8_t flag);
 UINT16 MQTT_ServerRequest_to_Response(UINT8 *msg_in, UINT16 msg_in_len);
 UINT16 MQTT_Server_MsgOutstanding(UINT8 * pMsg);
 
 void    init_MQTT_ADC(void);
 
-// #endif // USE_MQTT_SERVER
+#endif // USE_MQTT_NODE
 
-// #endif // MQTT_HEADER
+#endif // MQTT_HEADER
