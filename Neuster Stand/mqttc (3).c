@@ -70,11 +70,54 @@ UINT8 isMqttPingResp( PubSubClient* pPubSubClient, UINT8 *buffer){
     return 1;
 }
 
-// PING ===========================================================
-char* isMqttSubscribeAck(UINT8* RxBuffer){
-	char topic[20];
-	return topic;
-	//TODO: schreiben warning: function returns address of local variable [-Wreturn-local-addr]
+// SUBSCRIPTION ===========================================================
+
+Subscription* mqtt_find_SubscriptionStruct_which_are_Scheduled(Subscription aSubscripts[], UINT8 MaxSubscriptions){
+	UINT8 index = 0;
+
+	for (index = 0 ; index < MaxSubscriptions; index++){
+		if(!(aSubscripts[index].topic_length)) break;
+		if( (MQTT_SUBSCRIBE_FirstSubscribeRequired == aSubscripts[index].state) ){			// first publish required?
+			aSubscripts[index].state = MQTT_SUBSCRIBE_Scheduled;
+			return &aSubscripts[index];
+		}
+	}
+	for (index = 0 ; index < MaxSubscriptions; index++){
+		if(!(aSubscripts[index].topic_length)) break;
+		if( (MQTT_SUBSCRIBE_Scheduled == aSubscripts[index].state) ){						// first publish required?
+			aSubscripts[index].state = MQTT_SUBSCRIBE_Scheduled;
+			return &aSubscripts[index];
+		}
+	}
+	return 0; // Keine Aktivitaet erforderlich
+}
+
+
+Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions ){
+	UINT8 	mqtt_msg_len;
+	UINT8   buf_index 			= 0;
+	UINT8 	subs_index 	= 0;
+	UINT16  message_id;
+	UINT8   return_code;
+
+	//while(buf_index < msg_length) {
+		if( (buffer[buf_index] & 0xf0) != MQTTSUBACK)  return 0; 	// Client Subscribe Acknowledgement + Reserved
+		mqtt_msg_len = buffer[buf_index + 1];  					// Subscr. Message Length
+		message_id   = (buffer[buf_index+2] << 8) + buffer[buf_index+3]; 				// Message ID
+		return_code  = buffer[buf_index+4]; 						// Return Code
+
+		// Check if the message ID matches any subscription in the array
+		for(subs_index = 0; subs_index < MaxSubscriptions; subs_index++) {
+			if(aSubscripts[subs_index].message_id == message_id ) {
+				aSubscripts[subs_index].QoS = return_code;
+				aSubscripts[subs_index].state = MQTT_SUBSCRIBE_ACKNOWLEDGED; // Set the subscription state to ACKNOWLEDGED
+				return &aSubscripts[subs_index]; // Found a matching subscription
+			}
+		}
+
+	//	buf_index += 2 + mqtt_msg_len; // Move to the next message
+	//}
+	return 0; // No matching subscription found
 }
 
 Subscription* search_Subscription_topic_match(Subscription aSubscripts[] , char* topic, UINT8 MaxSubscriptions){
@@ -86,6 +129,194 @@ Subscription* search_Subscription_topic_match(Subscription aSubscripts[] , char*
 	return NULL;
 }
 
+UINT8 mqtt_SubscribeStructInit(Subscription* pSubscript, UINT16 msgId, char* name, UINT8 QoS){
+	pSubscript->state 			= MQTT_SUBSCRIBE_FirstSubscribeRequired;
+	pSubscript->headerflags.U8 	= MQTTSUBSCRIBE | 2; 		// 2 fuer reserved flags
+	pSubscript->message_id 		= msgId;
+	strcpy(pSubscript->topic_name, name);
+	pSubscript->topic_length	= strlen(name);
+	pSubscript->remainingLength = 5; // ToDo
+	pSubscript->QoS 			= QoS;
+	return 0;
+}
+
+UINT16 createSubscribeReqMsg(Subscription* pSubscript, UINT8 *TxBuf) {
+    UINT16 len;
+    if (pSubscript->state == MQTT_SUBSCRIBE_Scheduled) {
+        if (!(pSubscript->topic_length)) return 0;
+        TxBuf[0] = pSubscript->headerflags.U8; // Header
+        len = sprintf((char*)&TxBuf[6], "%s", pSubscript->topic_name);
+        TxBuf[2] = 	pSubscript->message_id >> 8;		// Message ID MSB
+        TxBuf[3] = 	pSubscript->message_id;		// Message ID LSB
+        TxBuf[4] = 	(UINT8)(len >> 8);
+        TxBuf[5] =	(UINT8)len ;  // Topic_Length
+        TxBuf[1] = 2 + 2 + len + 1;  // MQTT_Msg_Length = 2 Bytes Message ID + 2 Bytes Topic_Length + len for topics + QoS
+        TxBuf[6 + len] = pSubscript->QoS; // QoS level
+        pSubscript->state = MQTT_SUBSCRIBE_SENT;
+        return TxBuf[1] + 2;  // Length of the message is MQTT_Msg_Length + 2
+    }
+    return 0;
+}
+
+UINT8 isMqttRxPublish(UINT8 *buffer, PublishBrokerContext* publ){
+	UINT16 len;
+	int payloadLen;
+	int index = 0; //index of buffer
+
+	if((buffer[0]& 0xf0)!= MQTTPUBLISH) return 0; //bit 4-7
+
+	publ->headerflags.BA.DUP    = (buffer[0] & 0x08) >> 3; 		// Bit 3 , DUP bei QoS 0 immer 0
+	publ->headerflags.BA.QoS    = (buffer[0] & 0x06) >> 1; 		// Bit 2 und 1
+	publ->headerflags.BA.Retain = (buffer[0] & 0x01);    		// Bit 0 , wenn true (1) dann speichert der Server die Nachricht um auch an alle zukünftigen Subs. des Topics zu schicken
+	publ->remainingLength 		= buffer[1]; 					// MQTT_Msg_Length index 1
+
+	len = ( (UINT16)buffer[2] << 8 ) + buffer[3]; 		//topic length: index 2,3
+	publ->topicLen = len;
+
+	if(len > TOPIC_LENGTH){
+		FWF_DBG1_PRINTFv("Length > TOPIC_LENGHT");
+		return 0;
+	}
+	// memset(publ->topic_name, 0, len); 						//publ->topic_name[0]= '\0';
+	strncpy(publ->topic_name, (char*)&buffer[4], publ->topicLen);	// index 4
+	publ->topic_name[len] = '\0'; 								// TODO: notwendig?
+	index = 4 + len;
+
+	if(publ->headerflags.BA.QoS > 0){
+		publ->message_id = (buffer[index] << 8) + buffer[index+1]; 	// Ist nur bei QoS > 0 enthalten
+	}
+	index += 2;
+	payloadLen = publ->remainingLength - (index - 1);   			// remLen - länge seit remLen (remLen fängt bei 1 an)
+	publ->payloadLen = payloadLen;
+
+	strncpy(publ->payload , (char*)&buffer[index], payloadLen);		// Wozu das?
+	return 1;
+}
+
+// Speichere die empfangene Publish Nachricht in der zugehörigen Subscription (übertragen aller Daten aus der temporäre Publish zur Subscription)
+void copyPublishToSubscription(Subscription* sub, PublishBrokerContext* pub) {
+    sub->RxPublish[0].headerflags.U8 = pub->headerflags.U8;
+    sub->RxPublish[0].message_id = pub->message_id;
+    sub->RxPublish[0].topicLen = pub->topicLen;
+    strcpy(sub->RxPublish[0].topic_name, pub->topic_name);
+    sub->RxPublish[0].remainingLength = pub->remainingLength;
+    sub->RxPublish[0].payloadLen = pub->payloadLen;
+    strcpy(sub->RxPublish[0].payload, pub->payload);
+    sub->RxPublish[0].Subscription_index = i;
+    sub->state = MQTT_PUBLISH_RECEIVED;
+}
+
+// Welche Subscription hat den selben Topic wie die empfangene Publish Nachricht? 
+// Rückgabe: Index der Subscription
+int CheckTopicRxPub(Subscription aSubscripts[], PublishBrokerContext aPublish[], UINT8 MaxSubscriptions){
+	for(int i = 0; i < MaxSubscriptions; i++){
+		if( strcmp(aSubscripts[i].topic_name, aPublish[0]) == 0
+		&& aSubscripts[i].state == MQTT_SUBSCRIBE_ACKNOWLEDGED){
+            copyPublishToSubscription(&aSubscripts[i], &aPublish[0]);
+            return i;
+		}
+	}
+	FWF_DBG1_PRINTFv("Publish Topic didn't match a Publish Context");
+	return -1;
+}
+
+// PUBLISH ===========================================================
+
+// Alle relevanten PublishStruct's (topicLen und MQTT_PUBLISH_SENT) auf MQTT_PUBLISH_Scheduled setzen
+void mqtt_PublishStructALL_SetPublishScheduled(PublishNodeContext aPublishs[], UINT8 MaxPublishStructs){
+UINT8 index = 0;
+	for (index = 0 ; index < MaxPublishStructs; index++){
+		if(!(aPublishs[index].topicLen)) continue;
+		if( MQTT_PUBLISH_SENT == aPublishs[index].state ){
+			aPublishs[index].state = MQTT_PUBLISH_Scheduled;
+		}
+	}
+}
+
+// gibt es eine erforderliche Aktivitaet bei einer Publish-Struktur?
+// array aPublish[] durchsuchen
+// Bei timeout alle aPublish durch mqtt_PublishStructALL_SetPublishScheduled() aktualisieren
+PublishNodeContext* mqtt_find_PublishStruct_which_are_Scheduled (PublishNodeContext aPublishs[], UINT8 MaxPublishStructs){
+UINT8 index = 0;
+	for (index = 0 ; index < MaxPublishStructs; index++){ 	// first publish required?
+		if(!(aPublishs[index].topicLen)) continue;
+		if( (MQTT_PUBLISH_FirstPublishRequired == aPublishs[index].state) ){			// first publish required?
+			aPublishs[index].state = MQTT_PUBLISH_Scheduled;
+		}
+	}
+	for (index = 0 ; index < MaxPublishStructs; index++){ 	// Timeout exceeded?
+		if(!(aPublishs[index].topicLen)) continue;
+		if(	uC.timer_1ms >	(aPublishs[index].lastPublishActivity + aPublishs[index].PublishPeriod )  ){ // Timeout exceeded?
+			aPublishs[index].state = MQTT_PUBLISH_Scheduled;
+			mqtt_PublishStructALL_SetPublishScheduled(aPublishs,MaxPublishStructs ); 				// bei Bedarf auf MQTT_PUBLISH_Scheduled setzen
+			break; // Array spaeter von Anfang an bearbeiten
+		}
+	}
+	for (index = 0 ; index < MaxPublishStructs; index++){ // return first aPublish to be scheduled
+		if(!(aPublishs[index].topicLen)) continue;
+		if( (MQTT_PUBLISH_Scheduled == aPublishs[index].state) ){
+			return &aPublishs[index];
+		}
+	}
+	return 0; // Keine Aktivitaet erforderlich
+}
+
+
+
+// Return: Laenge der TxMsg MQTT_Msg_Length +2
+UINT16 createPublishMsg(PublishNodeContext* pPubCon, UINT8 *TxBuf){
+UINT16 len ;
+UINT16 len_val;
+float  value = 0.123456;
+	if( MQTT_PUBLISH_Scheduled == pPubCon->state){
+		if(!(pPubCon->topicLen)) return 0;
+		TxBuf[0] = pPubCon->headerflags.U8 ;  							// 0: 	Header
+		len = sprintf((char*)&TxBuf[4],"%s%s",uC.controller_name, pPubCon->topic_name);
+		TxBuf[2] = (UINT8)(len >> 8);									// 2,3	Topic_Length
+		TxBuf[3] = (UINT8)(len );
+		len_val = sprintf((char*)&TxBuf[4 + len],"%f",value);
+		TxBuf[1] = len + len_val; 										// 1: 	MQTT_Msg_Length
+		pPubCon-> state =  MQTT_PUBLISH_SENT;
+		pPubCon->lastPublishActivity = uC.timer_1ms;
+	    return TxBuf[1] +2;												// Laenge der Nachricht ist MQTT_Msg_Length +2
+	}
+	return 0;
+}
+
+
+UINT8 mqtt_PublishStructInit(PublishNodeContext* aPublish, UINT16 msgId, char* name, UINT8 HeaderFlags, UINT32 publishPeriod){
+	aPublish->state = MQTT_PUBLISH_FirstPublishRequired;
+	aPublish->headerflags.U8 	= MQTTPUBLISH | HeaderFlags;
+	aPublish->message_id 		= msgId;
+	strcpy(aPublish->topic_name, name);
+	aPublish->topicLen  		= strlen(name);
+	aPublish->remainingLenght 	= 5;		// ToDo: ueberarbeiten
+	aPublish->CleanSession 		= 0;
+	aPublish->PublishPeriod = publishPeriod;
+	return 0;
+}
+
+UINT8 isMqttPubRel(UINT8 *buffer, PublishBrokerContext* publ) {
+	if((buffer[0]& 0xf0)!= MQTTPUBREL) return 0; 		//bit 4-7
+	publ->message_id = (buffer[2] << 8) + buffer[3]; 	// message ID wird von Pubrel übertragen
+	return 1;
+}
+
+UINT16 createMqttPuback(UINT8 *buffer, PublishBrokerContext* publ) {
+	buffer[0] = MQTTPUBACK ;	       // Packet Type
+	buffer[1] = 3;     				   // Remaining Length
+	buffer[2] = publ->message_id  >> 8; 	// set MsgID
+	buffer[3] = publ->message_id;
+	return 4;
+}
+
+UINT16 createMqttPubrec(UINT8 *buffer, PublishBrokerContext* publ) {
+	buffer[0] = MQTTPUBREC ;	       // Packet Type
+	buffer[1] = 3;     				   // Remaining Length
+	buffer[2] = publ->message_id  >> 8; 	// set MsgID
+	buffer[3] = publ->message_id;
+	return 4;
+}
 
 
 //---------------------------------Definition der Funktionen-------------------------------------------------------
@@ -97,6 +328,7 @@ UINT8 checkStringLength(PubSubClient* src, int len, const char* s) {
     }
     return 1;
 }
+
 
 UINT32 millis() {    // Millisekunden seit POR
     return uC.timer_1ms;

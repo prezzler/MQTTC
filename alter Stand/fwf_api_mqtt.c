@@ -464,7 +464,7 @@ UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer, UINT16 msg_Rx_len){
 char* topic;
 Subscription* pSubscriptionStruct;
 int ret_index = 0;
-static PublishBrokerContext *tmpRxPublish[1]; // temporäre Speicherung vor Erkennung der zugehörigen Subscription
+static PublishBrokerContext tmpRxPublish[1]; // temporäre Speicherung vor Erkennung der zugehörigen Subscription
 
 	if( isMqttPingResp(pPubSubClient, RxBuffer) ){
 		pPubSubClient->pingOutstanding = false;
@@ -485,13 +485,13 @@ static PublishBrokerContext *tmpRxPublish[1]; // temporäre Speicherung vor Erke
 			if (QoS == 1){
 				// sendet ein Puback
 				aSubscriptions[ret_index].state = MQTT_SUBSCRIBE_PUBLISH_ACKED; // Publish Ack has been sent
-				return createMqttPuback(mqtt_client_var->pSendData, aSubscriptions[ret_index]->RxPublish->message_id);
+				return createMqttPuback(mqtt_client_var->pSendData, aSubscriptions[ret_index]->RxPublish);
 			}
 			else if (QoS == 2){
 				//aRxPublish->subs_index = ret_index; // Speichert den Index der zugehörigen Subscription
 				// sendet ein Pubrec
 				aSubscriptions[ret_index].state = MQTT_SUBSCRIBE_PUBLISH_REC; // Publish Rec has been sent
-				return createMqttPubrec(mqtt_client_var->pSendData, aSubscriptions[ret_index]->RxPublish->message_id);
+				return createMqttPubrec(mqtt_client_var->pSendData, aSubscriptions[ret_index]->RxPublish);
 			}
 		}
 		// ToDo Output_Publish(aRxPublish->topic_name, aRxPublish->payload, aRxPublish->payloadLen); // Output von Publish

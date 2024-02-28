@@ -1,9 +1,9 @@
 ﻿// MQTT_VERSION : Pick the version
 //#define MQTT_VERSION MQTT_VERSION_3_1
-// #ifndef MQTT_VERSION
-// #define MQTT_VERSION MQTT_VERSION_3_1_1
+#ifndef MQTT_VERSION
+#define MQTT_VERSION MQTT_VERSION_3_1_1
 
-// #if USE_MQTT_NODE
+#if USE_MQTT_NODE
 
 #include <stdio.h>
 #include <stdint.h>
@@ -121,7 +121,6 @@ typedef enum CPP_ENUM_SIZE_8Bit {
 	MQTT_SUBSCRIBE_Scheduled 	,		/// SUBSCRIBE REQ is in process
 	MQTT_SUBSCRIBE_SENT		,	    	/// SUBSCRIBE REQ has been sent to Broker
 	MQTT_SUBSCRIBE_ACKNOWLEDGED ,       /// SUBSCRIBE ACK has been received
-    MQTT_SUBSCRIBE_PUBLISH_RECEIVED,    /// PUBLISH has been received
     MQTT_SUBSCRIBE_PUBLISH_ACKED    ,	/// PUBLISH ACK has been sent
     MQTT_SUBSCRIBE_PUBLISH_REC		,	/// PUBREC has been sent
 	MQTT_SUBSCRIBE_PUBLISH_REL		,	/// PUBREL has been received
@@ -165,8 +164,20 @@ typedef struct  {
 } Client;
 
 
-#define TOPIC_LENGTH 128 // Maximum topic length
+#define TOPIC_LENGTH 128 	// Maximum topic length
+#define PAYLOAD_LENGTH 32 	// Maximum topic length
 
+
+typedef struct  {
+	MQTT_SUBSCRIBE_state 	state;
+    UINT16 	message_id;
+    UINT16 	topic_length;
+    uint16_t remainingLength;	// ToDo Wozu
+    char 	topic_name[TOPIC_LENGTH];
+    UINT8   QoS;
+    UINT8 	acked; // Acknowledge has been sent
+    HeaderFlags	headerflags;     // Message_type:4; Reserved:4;
+} Subscription;
 
 
 typedef struct  {
@@ -188,28 +199,17 @@ typedef struct {
     UINT32 		PublishPeriod;			// PublishPeriod [ms]
 } PublishNodeContext;
 
-typedef struct  {
-	MQTT_SUBSCRIBE_state 	state;
-    UINT16 	message_id;
-    UINT16 	topic_length;
-    uint16_t remainingLength;	// ToDo Wozu
-    char 	topic_name[TOPIC_LENGTH];
-    UINT8   QoS;
-    UINT8 	acked; // Acknowledge has been sent
-    HeaderFlags	headerflags;     // Message_type:4; Reserved:4;
-    PublishBrokerContext* RxPublish; // Zeiger auf empfangene Publish, passend zur Subscription
-} Subscription;
 
 typedef struct {
     // Empfangene Publish (müssen auf Topic mit Subscription gematcht werden)
-    HeaderFlags	headerflags;     		// Message_type:4; DUP:1; Retain:1; QoS:2;
-    UINT16 		message_id;
-	UINT8 		topicLen;
-    char  		topic_name [TOPIC_LENGTH];
-    uint16_t 	remainingLength;
+    UINT8 	    payload[PAYLOAD_LENGTH];
     UINT16 		payloadLen;
-    UINT8* 	    payload;
-    uint16_t 	CleanSession;
+    UINT16 		message_id;
+    char  		topic_name [TOPIC_LENGTH];
+	UINT16 		topicLen;
+	UINT16	 	remainingLength;
+    HeaderFlags	headerflags;     		// Message_type:4; DUP:1; Retain:1; QoS:2;
+    UINT16 		CleanSession;
     int Subscription_index;
 } PublishBrokerContext;
 
@@ -290,6 +290,9 @@ UINT8 			mqtt_SubscribeStructInit		(Subscription* pSubscript, UINT16 msgId, char
 UINT16 			createSubscribeReqMsg			(Subscription* pSubscript, UINT8 *TxBuf);
 UINT8 			isMqttRxPublish					(UINT8 *buffer, PublishBrokerContext* publ);
 
+void copyPublishToSubscription(Subscription* sub, PublishBrokerContext* pub);
+int CheckTopicRxPub(Subscription aSubscripts[], PublishBrokerContext aPublish[], UINT8 MaxSubscriptions);
+
 // PUBLISH ===========================================================
 void 				mqtt_PublishStructALL_SetPublishScheduled( PublishNodeContext aPublishs[], UINT8 MaxPublishStructs);
 PublishNodeContext* mqtt_find_PublishStruct_which_are_Scheduled (PublishNodeContext aPublishs[], UINT8 MaxPublishStructs);
@@ -300,12 +303,6 @@ UINT8 	isMqttPubRel(UINT8 *buffer, PublishBrokerContext* publ) ;
 UINT16 	createMqttPuback(UINT8 *buffer, PublishBrokerContext* publ) ;
 UINT16 	createMqttPubrec(UINT8 *buffer, PublishBrokerContext* publ) ;
 
-// Welche Subscription hat den selben Topic wie die empfangene Publish Nachricht? 
-// Rückgabe: Index der Subscription
-int CheckTopicRxPub(Subscription aSubscripts[], PublishBrokerContext aPublish[], UINT8 MaxSubscriptions);
-
-// Speichere die empfangene Publish Nachricht in der zugehörigen Subscription (übertragen aller Daten aus der temporäre Publish zur Subscription)
-void copyPublishToSubscription(Subscription* sub, PublishBrokerContext* pub);
 
 MqttConnect* MqttConnectKonstruktor(PubSubClient* src); //setzt Standartwerte
 
@@ -375,6 +372,6 @@ int   Client_available(TCP_MQTT_CLIENT_CONTEXT* src);  // Benutzung: Client_avai
 UINT8 MQTT_loop(PubSubClient* pub, MqttConnect* con);
 
 //---------------------------------Ende Deklarierung der Funktionen-------------------------------------------------------
-// #endif // USE_MQTT_NODE
+#endif // USE_MQTT_NODE
 
-// #endif // MQTT_VERSION
+#endif // MQTT_VERSION
