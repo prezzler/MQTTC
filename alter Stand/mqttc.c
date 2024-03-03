@@ -92,7 +92,9 @@ Subscription* mqtt_find_SubscriptionStruct_which_are_Scheduled(Subscription aSub
 	return 0; // Keine Aktivitaet erforderlich
 }
 
-
+// überprüft ob die empfangene Nachricht ein Subscribe Acknowledgement ist
+// und überprüft ob die Message ID mit einer Subscription in der Subscription-Liste übereinstimmt
+// Return: Zeiger auf die Subscription, die das Acknowledgement erhalten hat
 Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions ){
 	UINT8 	mqtt_msg_len;
 	UINT8   buf_index 			= 0;
@@ -137,7 +139,8 @@ UINT8 mqtt_SubscribeStructInit(Subscription* pSubscript, UINT16 msgId, char* nam
 	pSubscript->topic_length	= strlen(name);
 	pSubscript->remainingLength = 5; // ToDo
 	pSubscript->QoS 			= QoS;
-    aSubscriptions->RxPublish[1];
+    PublishBrokerContext RxPublish; 
+    pSubscript->RxPublish[1];
 	return 0;
 }
 
@@ -160,7 +163,7 @@ UINT16 createSubscribeReqMsg(Subscription* pSubscript, UINT8 *TxBuf) {
 }
 
 UINT8 isMqttRxPublish(UINT8 *buffer, PublishBrokerContext* publ){
-	UINT16 len, remaining_length;
+	UINT16 len;
 	int payloadLen;
 	int index = 0; //index of buffer
 
@@ -169,8 +172,7 @@ UINT8 isMqttRxPublish(UINT8 *buffer, PublishBrokerContext* publ){
 	publ->headerflags.BA.DUP    = (buffer[0] & 0x08) >> 3; 		// Bit 3 , DUP bei QoS 0 immer 0
 	publ->headerflags.BA.QoS    = (buffer[0] & 0x06) >> 1; 		// Bit 2 und 1
 	publ->headerflags.BA.Retain = (buffer[0] & 0x01);    		// Bit 0 , wenn true (1) dann speichert der Server die Nachricht um auch an alle zukünfitgen Subs. des Topics zu schicken
-	remaining_length = buffer[1]; 				// index 1
-	publ->remainingLength = remaining_length;
+	publ->remainingLength 		= buffer[1]; 					// MQTT_Msg_Length index 1
 
 	publ->topicLen = len = ( buffer[2] << 8 ) + buffer[3]; 		//topic length // index 2,3
 
