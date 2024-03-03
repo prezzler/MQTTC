@@ -12,7 +12,7 @@
 #include <time.h>
 #include <string.h>
 
-#include "uip.h"
+// #include "uip.h"
 
 #define MQTT_VERSION_3_1      3
 #define MQTT_VERSION_3_1_1    4
@@ -188,18 +188,6 @@ typedef struct {
     UINT32 		PublishPeriod;			// PublishPeriod [ms]
 } PublishNodeContext;
 
-typedef struct  {
-	MQTT_SUBSCRIBE_state 	state;
-    UINT16 	message_id;
-    UINT16 	topic_length;
-    uint16_t remainingLength;	// ToDo Wozu
-    char 	topic_name[TOPIC_LENGTH];
-    UINT8   QoS;
-    UINT8 	acked; // Acknowledge has been sent
-    HeaderFlags	headerflags;     // Message_type:4; Reserved:4;
-    PublishBrokerContext* RxPublish; // Zeiger auf empfangene Publish, passend zur Subscription
-} Subscription;
-
 typedef struct {
     // Empfangene Publish (müssen auf Topic mit Subscription gematcht werden)
     HeaderFlags	headerflags;     		// Message_type:4; DUP:1; Retain:1; QoS:2;
@@ -212,6 +200,19 @@ typedef struct {
     uint16_t 	CleanSession;
     int Subscription_index;
 } PublishBrokerContext;
+
+typedef struct  {
+	MQTT_SUBSCRIBE_state 	state;
+    UINT16 	message_id;
+    UINT16 	topic_length;
+    uint16_t remainingLength;	// ToDo Wozu
+    char 	topic_name[TOPIC_LENGTH];
+    UINT8   QoS;
+    UINT8 	acked; // Acknowledge has been sent
+    HeaderFlags	headerflags;     // Message_type:4; Reserved:4;
+    PublishBrokerContext* RxPublish; // Zeiger auf empfangene Publish, passend zur Subscription
+} Subscription;
+
 
 #if 0
 // Der FILE Datentyp wird als Platzhalter benutzt, bis die Art des Streams angepasst wird
@@ -283,7 +284,7 @@ UINT8 createMqttPingResp(UINT8 *buffer);
 UINT8 isMqttPingResp( PubSubClient* pPubSubClient, UINT8 *buffer);
 
 // SUBSCRIPTION ===========================================================
-Subscription*	isMqttSubscribeAck				(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions);
+Subscription*	isMqttSubscribeAck				(Subscription aSubscripts[], UINT8 *buffer, UINT8 MaxSubscriptions);
 Subscription* 	search_Subscription_topic_match	(Subscription aSubscripts[], char* topic, UINT8 MaxSubscriptions);
 UINT8 			mqtt_SubscribeStructInit		(Subscription* pSubscript, UINT16 msgId, char* name, UINT8 QoS, PublishBrokerContext* rxPublish);
 Subscription* 	mqtt_find_SubscriptionStruct_which_are_Scheduled(Subscription aSubscripts[], UINT8 MaxSubscriptions);

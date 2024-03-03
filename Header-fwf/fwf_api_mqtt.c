@@ -10,14 +10,14 @@ date    11.2020
 ------	Includes
 -----------------------------------------------------------------------------------------*/
 // ARM-Strukturen ==============================
-#include <misc.h>
-#include <stm32f4xx.h>
-#include "stm32f4xx_gpio.h"         // BitAction
-#include <stm32f4xx_tim.h>
-#include <stm32f4xx_rcc.h>
-#include <stm32f4xx_usart.h>
-#include <stm32f4xx_wwdg.h>
-#include <stm32f4xx_adc.h>
+// #include <misc.h>
+// #include <stm32f4xx.h>
+// #include "stm32f4xx_gpio.h"         // BitAction
+// #include <stm32f4xx_tim.h>
+// #include <stm32f4xx_rcc.h>
+// #include <stm32f4xx_usart.h>
+// #include <stm32f4xx_wwdg.h>
+// #include <stm32f4xx_adc.h>
 
 #include <string.h>                 // memcpy
 
@@ -35,28 +35,28 @@ date    11.2020
 #define DEBUG_LEVEL_FWF         2
 
 #include "fwf_dbg.h"      			// dbg_toggle
-#include "fwf_api_categories.h" 	// FWF_CAT_xxx CATEGORIES_FOR_COMMUNICATION
+// #include "fwf_api_categories.h" 	// FWF_CAT_xxx CATEGORIES_FOR_COMMUNICATION
 
-#include "fwf_test_struct_uc.h"    	// SETGET_TEST_STRUCT_INDEX ..
+// #include "fwf_test_struct_uc.h"    	// SETGET_TEST_STRUCT_INDEX ..
 
-#include "fwf_lib.h"				// msg2uint_be
-#include "fwf_flash.h"          	// Datenstrukturen + fwf_api_com
+// #include "fwf_lib.h"				// msg2uint_be
+// #include "fwf_flash.h"          	// Datenstrukturen + fwf_api_com
 
 #include "fwf_dhcp.h"				// DHCP_STATE
-#include "fwf_uc_status.h"          // uC
-#include "fwf_hw_dio.h"             // lax,..
+// #include "fwf_uc_status.h"          // uC
+// #include "fwf_hw_dio.h"             // lax,..
 
-#include "HW_pinfkt.h"				// GPIO_LOW_
-#include "HW_devices.h" 			// SPIx_HWTYPE_ADC_ADS8588S
+// #include "HW_pinfkt.h"				// GPIO_LOW_
+// #include "HW_devices.h" 			// SPIx_HWTYPE_ADC_ADS8588S
 
-#include "fwf_udp_interpreter.h"    // generate_err_msg()
+// #include "fwf_udp_interpreter.h"    // generate_err_msg()
 // #include "fwf_tcp_server.h"         // tcp_server_vars
-#include "mac_dma.h"                // rx_tcp_appdata
-#include "fwf_string.h"             // check_string
+// #include "mac_dma.h"                // rx_tcp_appdata
+// #include "fwf_string.h"             // check_string
 #include "fwf_api_mqtt.h"			// 	MQTT_interlock_timer_reset ..
-#include "fwf_api_uC_headers.h" 	// alle Applikationsheader
+// #include "fwf_api_uC_headers.h" 	// alle Applikationsheader
 
-#include "uip.h"					// command_execution_time
+// #include "uip.h"					// command_execution_time
 
 
 #if  USE_MQTT_NODE
@@ -159,7 +159,7 @@ Union32 ip;
 
 UINT8 mqtt_SubscribeStructALLInit(void){
 UINT8 index = 0;
-	mqtt_SubscribeStructInit(&aSubscriptions[index], 1, "STM_Step/analog1", 0 , aRxPublish[index]);
+	mqtt_SubscribeStructInit(&aSubscriptions[index], 1, "STM_Step/analog1", 0 , &aRxPublish[index]);
 	index++;
 	// mqtt_SubscribeStructInit(&aSubscriptions[index++], 1, "/AnaIn2", 0);
 	//index++;
@@ -479,19 +479,19 @@ int ret_index = 0;
 	if( (isMqttRxPublish(RxBuffer, &tmpRxPublish))){	
 		
 		if (!(ret_index = CheckTopicRxPub(aSubscriptions, &tmpRxPublish, MaxSubscriptions_of_this_Node))) return 0; // & weil die Funktion einen Pointer auf das Array erwartet 
-		int QoS = aSubscriptions[ret_index]->RxPublish->headerflags.BA.QoS;
+		int QoS = aSubscriptions[ret_index].RxPublish->headerflags.BA.QoS;
 		// wenn QoS = 0, dann wird keine Antwort gesendet, ansonsten: Puback oder Pubrec
 		if (QoS > 0){
 			if (QoS == 1){
 				// sendet ein Puback
 				aSubscriptions[ret_index].state = MQTT_SUBSCRIBE_PUBLISH_ACKED; // Publish Ack has been sent
-				return createMqttPuback(mqtt_client_var->pSendData, aSubscriptions[ret_index]->RxPublish);
+				return createMqttPuback(mqtt_client_var->pSendData, aSubscriptions[ret_index].RxPublish);
 			}
 			else if (QoS == 2){
 				//aRxPublish->subs_index = ret_index; // Speichert den Index der zugehörigen Subscription
 				// sendet ein Pubrec
 				aSubscriptions[ret_index].state = MQTT_SUBSCRIBE_PUBLISH_REC; // Publish Rec has been sent
-				return createMqttPubrec(mqtt_client_var->pSendData, aSubscriptions[ret_index]->RxPublish);
+				return createMqttPubrec(mqtt_client_var->pSendData, aSubscriptions[ret_index].RxPublish);
 			}
 		}
 		// ToDo Output_Publish(aRxPublish->topic_name, aRxPublish->payload, aRxPublish->payloadLen); // Output von Publish
