@@ -290,7 +290,7 @@ UINT8 			mqtt_SubscribeStructInit		(Subscription* pSubscript, UINT16 msgId, char
 Subscription* 	mqtt_find_SubscriptionStruct_which_are_Scheduled(Subscription aSubscripts[], UINT8 MaxSubscriptions);
 UINT16 			createSubscribeReqMsg			(Subscription* pSubscript, UINT8 *TxBuf);
 UINT8 			isMqttRxPublish					(UINT8 *buffer, PublishBrokerContext* publ);
-void            copyPublishToSubscription       (Subscription* sub, PublishBrokerContext* pub);
+void            copyPublishToSubscription       (Subscription* sub, PublishBrokerContext* pub, int index);
 int             CheckTopicRxPub                 (Subscription aSubscripts[], PublishBrokerContext *aPublish, UINT8 MaxSubscriptions);
 
 

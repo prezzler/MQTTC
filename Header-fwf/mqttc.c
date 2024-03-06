@@ -3,10 +3,10 @@
 #include "fwf_typ_defines.h"
 #include "fwf_dbg.h"
 
-#include "fwf_api_com.h"          	// FWF_COM_CMD MULTICAST_JOIN_LEAVE_STATUS
+// #include "fwf_api_com.h"          	// FWF_COM_CMD MULTICAST_JOIN_LEAVE_STATUS
 #include "fwf_api_flash.h"          // CONTROLLER_NAME
 #include "fwf_dhcp.h"				// DHCP_STATE
-#include "fwf_uc_status.h"
+// #include "fwf_uc_status.h"
 
 #include "mqttc.h"
 
@@ -99,7 +99,7 @@ Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT
 Subscription* search_Subscription_topic_match(Subscription aSubscripts[] , char* topic, UINT8 MaxSubscriptions){
 	UINT8 index = 0;
 	for (index = 0; index < MaxSubscriptions; index++){
-		if(match_topics(topic, aSubscripts[index].topic_name))
+		if(strcmp(topic, aSubscripts[index].topic_name) == 0)
 			return &aSubscripts[index];
 	}
 	return NULL;
@@ -113,7 +113,7 @@ UINT8 mqtt_SubscribeStructInit(Subscription* pSubscript, UINT16 msgId, char* nam
 	pSubscript->topic_length	= strlen(name);
 	pSubscript->remainingLength = 5; // ToDo
 	pSubscript->QoS 			= QoS;
-    pSubscribpt->RxPublish = rxPublish; // übernehmen des zugewiesenen PublishBrokerContext;
+    pSubscript->RxPublish = rxPublish; // übernehmen des zugewiesenen PublishBrokerContext;
 	return 0;
 }
 
@@ -195,16 +195,16 @@ UINT8 isMqttRxPublish(UINT8 *buffer, PublishBrokerContext* publ){
 }
 
 // Speichere die empfangene Publish Nachricht in der zugehörigen Subscription (übertragen aller Daten aus der temporäre Publish zur Subscription)
-void copyPublishToSubscription(Subscription* sub, PublishBrokerContext* pub) {
-    sub->RxPublish.headerflags.U8 = pub->headerflags.U8;
-    sub->RxPublish.message_id = pub->message_id;
-    sub->RxPublish.topicLen = pub->topicLen;
-    strcpy(sub->RxPublish.topic_name, pub->topic_name);
-    sub->RxPublish.remainingLength = pub->remainingLength;
-    sub->RxPublish.payloadLen = pub->payloadLen;
-    strcpy(sub->RxPublish.payload, pub->payload);
-    sub->RxPublish.Subscription_index = i;
-    sub->state = MQTT_PUBLISH_RECEIVED;
+void copyPublishToSubscription(Subscription* sub, PublishBrokerContext* pub, int index) {
+    sub->RxPublish->headerflags.U8 = pub->headerflags.U8;
+    sub->RxPublish->message_id = pub->message_id;
+    sub->RxPublish->topicLen = pub->topicLen;
+    strcpy(sub->RxPublish->topic_name, pub->topic_name);
+    sub->RxPublish->remainingLength = pub->remainingLength;
+    sub->RxPublish->payloadLen = pub->payloadLen;
+    strcpy(sub->RxPublish->payload, pub->payload);
+    sub->RxPublish->Subscription_index = index;
+    sub->state = MQTT_SUBSCRIBE_PUBLISH_RECEIVED;
 }
 
 // Welche Subscription hat den selben Topic wie die empfangene Publish Nachricht? 
@@ -213,7 +213,7 @@ int CheckTopicRxPub(Subscription aSubscripts[], PublishBrokerContext* aPublish, 
 	for(int i = 0; i < MaxSubscriptions; i++){
 		if( strcmp(aSubscripts[i].topic_name, aPublish->topic_name) == 0
 		&& aSubscripts[i].state == MQTT_SUBSCRIBE_ACKNOWLEDGED){
-            copyPublishToSubscription(&aSubscripts[i], aPublish);
+            copyPublishToSubscription(&aSubscripts[i], aPublish, i);
             return i;
 		}
 	}
