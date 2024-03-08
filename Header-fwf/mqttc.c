@@ -196,6 +196,10 @@ UINT8 isMqttRxPublish(UINT8 *buffer, PublishBrokerContext* publ){
 
 // Speichere die empfangene Publish Nachricht in der zugehörigen Subscription (übertragen aller Daten aus der temporäre Publish zur Subscription)
 void copyPublishToSubscription(Subscription* sub, PublishBrokerContext* pub, int index) {
+    if (sub->RxPublish == NULL) {
+        FWF_DBG1_PRINTFv("RxPublish is NULL");  //optional
+        return;
+    }
     sub->RxPublish->headerflags.U8 = pub->headerflags.U8;
     sub->RxPublish->message_id = pub->message_id;
     sub->RxPublish->topicLen = pub->topicLen;
@@ -211,11 +215,13 @@ void copyPublishToSubscription(Subscription* sub, PublishBrokerContext* pub, int
 // Rückgabe: Index der Subscription
 int CheckTopicRxPub(Subscription aSubscripts[], PublishBrokerContext* aPublish, UINT8 MaxSubscriptions){
 	for(int i = 0; i < MaxSubscriptions; i++){
-		if( strcmp(aSubscripts[i].topic_name, aPublish->topic_name) == 0
-		&& aSubscripts[i].state == MQTT_SUBSCRIBE_ACKNOWLEDGED){
-            copyPublishToSubscription(&aSubscripts[i], aPublish, i);
-            return i;
-		}
+        if(&aSubscripts[i] != NULL){    // wenn Subscription existiert
+            if( strcmp(aSubscripts[i].topic_name, aPublish->topic_name) == 0    // richtige Subscription finden
+            && aSubscripts[i].state == MQTT_SUBSCRIBE_ACKNOWLEDGED){    
+                copyPublishToSubscription(&aSubscripts[i], aPublish, i);        // kopiere die empfangene Publish Nachricht in die Subscription
+                return i;
+            }
+        }
 	}
 	FWF_DBG1_PRINTFv("Publish Topic didn't match a Publish Context");
 	return -1;
