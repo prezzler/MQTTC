@@ -130,6 +130,8 @@ typedef enum CPP_ENUM_SIZE_8Bit {
 
 } MQTT_SUBSCRIBE_state ;
 
+typedef void (*mqtt_callback_t)(char*, UINT8*, UINT16); 
+
 // VORSICHT : Fuer Strukturgleichheit mit struct http_state im allgemeinen Teil sorgen!!!!
 typedef struct tcp_MQTT_CLIENT_hasMsg_vars {
   // allgemeiner Teil der Datenstruktur
@@ -140,6 +142,7 @@ typedef struct tcp_MQTT_CLIENT_hasMsg_vars {
   // Applikationsspezifischer Teil der Serverstruktur
   UINT8  server_index;   		// Index zur Individualisierung der Server Kaever
   UINT32 mqtt_ping_time;		// Zeit seit Verbindungsaufbau oder dem letzten Ping
+  mqtt_callback_t callback;		// Funktion, die bei Empfang einer Nachricht aufgerufen wird
 } TCP_MQTT_CLIENT_CONTEXT;
 
 
@@ -282,6 +285,10 @@ UINT8 createMqttPingReq(UINT8 *buffer);
 UINT8 isMqttPingRequest(UINT8 *buffer);
 UINT8 createMqttPingResp(UINT8 *buffer);
 UINT8 isMqttPingResp( PubSubClient* pPubSubClient, UINT8 *buffer);
+
+// Callback ===========================================================
+void mqtt_set_callback(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, mqtt_callback_t  callback);
+void callbackAusloesen(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, char* topic, UINT8* payload, UINT16 length);
 
 // SUBSCRIPTION ===========================================================
 Subscription*	isMqttSubscribeAck				(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions);

@@ -46,6 +46,18 @@ UINT8 isMqttConnectACK(UINT8 *buffer){
 	if(buffer[3] !=  0)  return 0; // MQTT Return Code
 	return 1;
 }
+// Callback ===========================================================
+// gibt die gewünschte Callback Signatur an die MQTT_CLIENT Struktur weiter
+void mqtt_set_callback(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, mqtt_callback_t  callback){
+    mqtt_client->callback = callback;
+}
+// (temporaer) derzeit noch notwendig, damit der callback aufruf innerhalb der mqtt.c funktioniert. Solange bis Response-Processing in der mqtt.c verlagert ist.
+void callbackAusloesen(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, char* topic, UINT8* payload, UINT16 length){
+    if (mqtt_client->callback != NULL) {
+        mqtt_client->callback(topic, payload, length); 
+    }
+
+}
 
 
 // PING ===========================================================

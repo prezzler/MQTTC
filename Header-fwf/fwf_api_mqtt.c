@@ -132,6 +132,11 @@ void MQTT_init(void){
 	switch_event_msg_switch_event 	= 0;
 }
 
+void my_callback(char* topic, UINT8* payload, UINT16 payloadLen){
+	// konfigurierbare callback-Funktion außerhalb der MQTTC-Bibliothek
+	// hier wird entschieden, was mit der empfangenen Nachricht passiert
+}
+
 void MQTT_Client_init(void){ // MQTT Node Initialisierung
 Union32 ip;
 	ip.U8[0] = 10;
@@ -152,6 +157,7 @@ Union32 ip;
 
     PublishCount = mqtt_PublishStructALLInit(aPublish);
     SubCount	 = mqtt_SubscribeStructALLInit();
+	mqtt_set_callback(mqtt_client_var, my_callback);	// Übergeben der Callback-Funktion
 }
 
 
@@ -491,9 +497,13 @@ int ret_index = 0;
 				return createMqttPubrec(mqtt_client_var->pSendData, aSubscriptions[ret_index].RxPublish);
 			}
 		}
-		// ToDo Output_Publish(aRxPublish->topic_name, aRxPublish->payload, aRxPublish->payloadLen); // Output von Publish
 		// Speichern der Publish
 		// Output von Publish
+	
+		callbackAusloesen(mqtt_client_var ,aSubscriptions[ret_index].RxPublish->topic_name, aSubscriptions[ret_index].RxPublish->payload, aSubscriptions[ret_index].RxPublish->payloadLen);
+		// loest die Callback-Funktion von innerhalb der MQTTC-Bibliothek aus, um die empfangene Nachricht an my_callback zu uebergeben --> entspricht dem Output von Publish
+
+		// ToDo Output_Publish(aRxPublish->topic_name, aRxPublish->payload, aRxPublish->payloadLen); // Output von Publish
 	}
 	if ((isMqttPubRel(RxBuffer, &tmpRxPublish))){ // QoS2
 		if (!(ret_index = CheckTopicPubRel(aSubscriptions, &tmpRxPublish, MaxSubscriptions_of_this_Node))) return 0;
