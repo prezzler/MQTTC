@@ -3,10 +3,10 @@
 #include "fwf_typ_defines.h"
 #include "fwf_dbg.h"
 
-#include "fwf_api_com.h"          	// FWF_COM_CMD MULTICAST_JOIN_LEAVE_STATUS
+// #include "fwf_api_com.h"          	// FWF_COM_CMD MULTICAST_JOIN_LEAVE_STATUS
 #include "fwf_api_flash.h"          // CONTROLLER_NAME
 #include "fwf_dhcp.h"				// DHCP_STATE
-#include "fwf_uc_status.h"
+// #include "fwf_uc_status.h"
 
 #include "mqttc.h"
 
@@ -72,13 +72,12 @@ UINT8 isMqttPingResp( PubSubClient* pPubSubClient, UINT8 *buffer){
 
 // SUBSCRIPTION ===========================================================
 
-Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions ){
+Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT8 MaxSubscriptions ){
 	UINT8 	mqtt_msg_len;
 	UINT8   buf_index 			= 0;
 	UINT8 	subs_index 	= 0;
 	UINT16  message_id;
 	UINT8   return_code;
-
     if( (buffer[buf_index] & 0xf0) != MQTTSUBACK)  return 0; 	// Client Subscribe Acknowledgement + Reserved
     mqtt_msg_len = buffer[buf_index + 1];  					// Subscr. Message Length
     message_id   = (buffer[buf_index+2] << 8) + buffer[buf_index+3]; 				// Message ID
@@ -95,6 +94,7 @@ Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT
 
 	return 0; // No matching subscription found
 }
+
 
 Subscription* search_Subscription_topic_match(Subscription aSubscripts[] , char* topic, UINT8 MaxSubscriptions){
 	UINT8 index = 0;
@@ -155,7 +155,7 @@ UINT16 createSubscribeReqMsg(Subscription* pSubscript, UINT8 *TxBuf) {
     return 0;
 }
 
-// Prüft ob der eingehende Buffer ein Publish ist und speichert die Daten in publ
+// Prüft ob der eingehende Buffer ein Publish ist und speichert die Daten in tmpRxPublish
 // checkt ob der publish topic auch in einer Subscription mit state = MQTT_SUBSCRIBE_ACKED ist
 UINT8 isMqttRxPublish(UINT8 *buffer, PublishBrokerContext* publ){
 	UINT16 len;
@@ -186,42 +186,39 @@ UINT8 isMqttRxPublish(UINT8 *buffer, PublishBrokerContext* publ){
 		publ->message_id = (buffer[index] << 8) + buffer[index+1]; 	// Ist nur bei QoS > 0 enthalten
 	}
 	index += 2;
-
+	
     payloadLen = publ->remainingLength - (index - 1);   			// remLen - länge seit remLen (remLen fängt bei 1 an)
     publ->payloadLen = payloadLen;
 
-	strncpy((char*) publ->payload , (char*)&buffer[index], payloadLen);		// Wozu das?
+	strncpy(publ->payload , (char*)&buffer[index], payloadLen);		// Wozu das?
 	return 1;
 }
 
-
-// Speichere die empfangene Publish Nachricht in der zugehoerigen Subscription (Uebertragen aller Daten aus der temporaere Publish zur Subscription)
+// Speichere die empfangene Publish Nachricht in der zugehörigen Subscription (übertragen aller Daten aus der temporäre Publish zur Subscription)
 void copyPublishToSubscription(Subscription* sub, PublishBrokerContext* pub, int index) {
-     if (sub->RxPublish == NULL) {
+    if (sub->RxPublish == NULL) {
         FWF_DBG1_PRINTFv("RxPublish is NULL");  //optional
         return;
     }
-    sub->RxPublish->headerflags.U8 	= pub->headerflags.U8;
-    sub->RxPublish->message_id 		= pub->message_id;
-    sub->RxPublish->topicLen 		= pub->topicLen;
+    sub->RxPublish->headerflags.U8 = pub->headerflags.U8;
+    sub->RxPublish->message_id = pub->message_id;
+    sub->RxPublish->topicLen = pub->topicLen;
     strcpy(sub->RxPublish->topic_name, pub->topic_name);
-
     sub->RxPublish->remainingLength = pub->remainingLength;
-    sub->RxPublish->payloadLen 		= pub->payloadLen;
-    strcpy((char*) sub->RxPublish->payload,(char*) pub->payload);
+    sub->RxPublish->payloadLen = pub->payloadLen;
+    strcpy(sub->RxPublish->payload, pub->payload);
     sub->RxPublish->Subscription_index = index;
     sub->state = MQTT_SUBSCRIBE_PUBLISH_RECEIVED;
 }
 
-// Welche Subscription hat das selbe Topic wie die empfangene Publish Nachricht?
-// Rueckgabe: Index der Subscription
+// Welche Subscription hat den selben Topic wie die empfangene Publish Nachricht? 
+// Rückgabe: Index der Subscription
 int CheckTopicRxPub(Subscription aSubscripts[], PublishBrokerContext* aPublish, UINT8 MaxSubscriptions){
 	for(int i = 0; i < MaxSubscriptions; i++){
         if(&aSubscripts[i] != NULL){    // wenn Subscription existiert
-
-            if( strcmp(aSubscripts[i].topic_name, aPublish->topic_name) == 0    // richtige subscription gefunden 
-            && aSubscripts[i].state == MQTT_SUBSCRIBE_ACKNOWLEDGED){
-                copyPublishToSubscription(&aSubscripts[i], aPublish, i);
+            if( strcmp(aSubscripts[i].topic_name, aPublish->topic_name) == 0    // richtige Subscription finden
+            && aSubscripts[i].state == MQTT_SUBSCRIBE_ACKNOWLEDGED){    
+                copyPublishToSubscription(&aSubscripts[i], aPublish, i);        // kopiere die empfangene Publish Nachricht in die Subscription
                 return i;
             }
         }
@@ -229,24 +226,6 @@ int CheckTopicRxPub(Subscription aSubscripts[], PublishBrokerContext* aPublish, 
 	FWF_DBG1_PRINTFv("Publish Topic didn't match a Publish Context");
 	return -1;
 }
-
-
-// Entspricht Message ID von empfanganem Pub Rel der Message ID von Publish?
-int CheckTopicPubRel(Subscription aSubscripts[], PublishBrokerContext* aPublish, UINT8 MaxSubscriptions){
-    for (int i = 0; i<MaxSubscriptions; i++){
-        if(&aSubscripts[i] != NULL ){
-
-            if((aSubscripts[i].state == MQTT_SUBSCRIBE_PUBLISH_REC) 
-            && (aSubscripts[i].RxPublish->message_id == aPublish.message_id)){
-                aSubscripts[i].RxPublish->state = MQTT_SUBSCRIBE_PUBLISH_REL;    // Publish Rel has been received
-                return i;
-            }
-        }
-    }
-    return 0;
-
-}
-
 
 // PUBLISH ===========================================================
 
@@ -346,13 +325,6 @@ UINT16 createMqttPubrec(UINT8 *buffer, PublishBrokerContext* publ) {
 	return 4;
 }
 
-UINT16 createMqttPubComp(UINT8 *buffer, PublishBrokerContext* publ) {
-    buffer[0] = MQTTPUBCOMP ;	       // Packet Type
-	buffer[1] = 3;     				   // Remaining Length
-	buffer[2] = publ->message_id  >> 8; 	// set MsgID
-	buffer[3] = publ->message_id;
-	return 4;
-}
 
 //---------------------------------Definition der Funktionen-------------------------------------------------------
 
