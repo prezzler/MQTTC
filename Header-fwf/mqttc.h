@@ -12,7 +12,7 @@
 #include <time.h>
 #include <string.h>
 
-// #include "uip.h"
+#include "uip.h"
 
 #define MQTT_VERSION_3_1      3
 #define MQTT_VERSION_3_1_1    4
@@ -201,7 +201,6 @@ typedef struct {
     UINT16 		payloadLen;
     uint16_t 	remainingLength;
     uint16_t 	CleanSession;
-    int 		Subscription_index;
 } PublishBrokerContext;
 
 typedef struct  {
@@ -213,7 +212,7 @@ typedef struct  {
     UINT8   QoS;
     UINT8 	acked; // Acknowledge has been sent
     HeaderFlags	headerflags;     		// Message_type:4; Reserved:4;
-    PublishBrokerContext* RxPublish; 	// Zeiger auf empfangene Publish, passend zur Subscription
+    PublishBrokerContext RxPublish; 	// Zeiger auf empfangene Publish, passend zur Subscription
 } Subscription;
 
 
@@ -293,13 +292,12 @@ void callbackAusloesen(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, char* topic, UINT8*
 // SUBSCRIPTION ===========================================================
 Subscription*	isMqttSubscribeAck				(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions);
 Subscription* 	search_Subscription_topic_match	(Subscription aSubscripts[], char* topic, UINT8 MaxSubscriptions);
-UINT8 			mqtt_SubscribeStructInit		(Subscription* pSubscript, UINT16 msgId, char* name, UINT8 QoS, PublishBrokerContext* rxPublish);
+UINT8 			mqtt_SubscribeStructInit		(Subscription* pSubscript, UINT16 msgId, char* name, UINT8 QoS);
 Subscription* 	mqtt_find_SubscriptionStruct_which_are_Scheduled(Subscription aSubscripts[], UINT8 MaxSubscriptions);
 UINT16 			createSubscribeReqMsg			(Subscription* pSubscript, UINT8 *TxBuf);
-UINT8 			isMqttRxPublish					(UINT8 *buffer, PublishBrokerContext* publ);
-void            copyPublishToSubscription       (Subscription* sub, PublishBrokerContext* pub, int index);
-int             CheckTopicRxPub                 (Subscription aSubscripts[], PublishBrokerContext *aPublish, UINT8 MaxSubscriptions);
-int           CheckTopicPubRel                (Subscription aSubscripts[], PublishBrokerContext* aPublish, UINT8 MaxSubscriptions);
+Subscription* 		isMqttRxPublish					(UINT8 *buffer, Subscription* sub, int max_number_subscriptions);
+int 			CheckTopicRxPub					(char* topic_pub, Subscription aSubscripts[], int MaxSubscriptions);
+int           	CheckTopicPubRel                (Subscription aSubscripts[], PublishBrokerContext* aPublish, UINT8 MaxSubscriptions);
 
 
 // PUBLISH ===========================================================
@@ -312,8 +310,6 @@ UINT8 	isMqttPubRel(UINT8 *buffer, PublishBrokerContext* publ) ;
 UINT16 	createMqttPuback(UINT8 *buffer, PublishBrokerContext* publ) ;
 UINT16 	createMqttPubrec(UINT8 *buffer, PublishBrokerContext* publ) ;
 UINT16  createMqttPubComp(UINT8 *buffer, PublishBrokerContext* publ);
-
-int     CheckTopicRxPub(Subscription aSubscripts[], PublishBrokerContext* aPublish, UINT8 MaxSubscriptions);
 
 MqttConnect* MqttConnectKonstruktor(PubSubClient* src); //setzt Standartwerte
 
