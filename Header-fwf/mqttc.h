@@ -12,7 +12,7 @@
 #include <time.h>
 #include <string.h>
 
-#include "uip.h"
+// #include "uip.h"
 
 #define MQTT_VERSION_3_1      3
 #define MQTT_VERSION_3_1_1    4
@@ -212,7 +212,7 @@ typedef struct  {
     UINT8   QoS;
     UINT8 	acked; // Acknowledge has been sent
     HeaderFlags	headerflags;     		// Message_type:4; Reserved:4;
-    PublishBrokerContext RxPublish; 	// Zeiger auf empfangene Publish, passend zur Subscription
+    PublishBrokerContext RxPublish; 	// empfangene Publish
 } Subscription;
 
 
@@ -297,8 +297,6 @@ Subscription* 	mqtt_find_SubscriptionStruct_which_are_Scheduled(Subscription aSu
 UINT16 			createSubscribeReqMsg			(Subscription* pSubscript, UINT8 *TxBuf);
 Subscription* 		isMqttRxPublish					(UINT8 *buffer, Subscription* sub, int max_number_subscriptions);
 int 			CheckTopicRxPub					(char* topic_pub, Subscription aSubscripts[], int MaxSubscriptions);
-int           	CheckTopicPubRel                (Subscription aSubscripts[], PublishBrokerContext* aPublish, UINT8 MaxSubscriptions);
-
 
 // PUBLISH ===========================================================
 void 				mqtt_PublishStructALL_SetPublishScheduled( PublishNodeContext aPublishs[], UINT8 MaxPublishStructs);
@@ -306,7 +304,7 @@ PublishNodeContext* mqtt_find_PublishStruct_which_are_Scheduled (PublishNodeCont
 UINT16 				createPublishMsg		(PublishNodeContext* pPubCon, UINT8 *TxBuf);
 UINT8 				mqtt_PublishStructInit	(PublishNodeContext* aPublish, UINT16 msgId, char* name, UINT8 HeaderFlags, UINT32 publishPeriod);
 
-UINT8 	isMqttPubRel(UINT8 *buffer, PublishBrokerContext* publ) ;
+Subscription* isMqttPubRel(Subscription sub[], UINT8 MaxSubscriptions, UINT8 *buffer);
 UINT16 	createMqttPuback(UINT8 *buffer, PublishBrokerContext* publ) ;
 UINT16 	createMqttPubrec(UINT8 *buffer, PublishBrokerContext* publ) ;
 UINT16  createMqttPubComp(UINT8 *buffer, PublishBrokerContext* publ);

@@ -6,6 +6,7 @@
         "fwf_api_mqtt.h": "c",
         "mqttc.h": "c",
         "fwf_dhcp.h": "c",
-        "fwf_typ_defines.h": "c"
+        "fwf_typ_defines.h": "c",
+        "fwf_api_com.h": "c"
     }
 }

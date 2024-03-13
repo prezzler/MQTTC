@@ -3,10 +3,10 @@
 #include "fwf_typ_defines.h"
 #include "fwf_dbg.h"
 
-#include "fwf_api_com.h"          	// FWF_COM_CMD MULTICAST_JOIN_LEAVE_STATUS
+// #include "fwf_api_com.h"          	// FWF_COM_CMD MULTICAST_JOIN_LEAVE_STATUS
 #include "fwf_api_flash.h"          // CONTROLLER_NAME
 #include "fwf_dhcp.h"				// DHCP_STATE
-#include "fwf_uc_status.h"
+// #include "fwf_uc_status.h"
 
 #include "mqttc.h"
 
@@ -183,7 +183,7 @@ int CheckTopicRxPub(char* topic_pub, Subscription aSubscripts[], int MaxSubscrip
 	return -1;
 }
 
-// Prüft ob der eingehende Buffer ein Publish ist und speichert die Daten in publ
+// Prüft ob der eingehende Buffer ein Publish ist und speichert in der zugehörigen Subscription
 // checkt ob der publish topic auch in einer Subscription mit state = MQTT_SUBSCRIBE_ACKED ist
 Subscription* isMqttRxPublish(UINT8 *buffer, Subscription sub[], int max_number_subscriptions){
 	UINT16 len;
@@ -219,24 +219,6 @@ Subscription* isMqttRxPublish(UINT8 *buffer, Subscription sub[], int max_number_
 	return &sub[index_sub];
 }
 
-
-
-
-// Entspricht Message ID von empfanganem Pub Rel der Message ID von Publish?
-int CheckTopicPubRel(Subscription aSubscripts[], PublishBrokerContext* aPublish, UINT8 MaxSubscriptions){
-    for (int i = 0; i<MaxSubscriptions; i++){
-        if(&aSubscripts[i] != NULL ){
-
-            if((aSubscripts[i].state == MQTT_SUBSCRIBE_PUBLISH_REC) 
-            && (aSubscripts[i].RxPublish.message_id == aPublish->message_id)){
-                aSubscripts[i].state = MQTT_SUBSCRIBE_PUBLISH_REL;    // Publish Rel has been received
-                return i;
-            }
-        }
-    }
-    return 0;
-
-}
 
 
 // PUBLISH ===========================================================
@@ -315,10 +297,22 @@ UINT8 mqtt_PublishStructInit(PublishNodeContext* aPublish, UINT16 msgId, char* n
 	return 0;
 }
 
-UINT8 isMqttPubRel(UINT8 *buffer, PublishBrokerContext* publ) {
+Subscription* isMqttPubRel(Subscription sub[], UINT8 MaxSubscriptions, UINT8 *buffer) {
 	if((buffer[0]& 0xf0)!= MQTTPUBREL) return 0; 		//bit 4-7
-	publ->message_id = (buffer[2] << 8) + buffer[3]; 	// message ID wird von Pubrel übertragen
-	return 1;
+	UINT16 message_id = (buffer[2] << 8) + buffer[3]; 	// message ID wird von Pubrel uebertragen 
+
+    int index_sub; 
+    //suche passende Message ID
+    for(int i = 0; i < MaxSubscriptions; i++){
+        if(&sub[i] != NULL){
+            if((sub[i].state == MQTT_SUBSCRIBE_PUBLISH_REC) && (sub[i].RxPublish.message_id == message_id)){
+
+                sub[i].state = MQTT_SUBSCRIBE_PUBLISH_REL;
+                index_sub = i;
+            }
+        }
+    }
+	return &sub[index_sub];
 }
 
 UINT16 createMqttPuback(UINT8 *buffer, PublishBrokerContext* publ) {
