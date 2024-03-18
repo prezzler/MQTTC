@@ -46,6 +46,34 @@ UINT8 isMqttConnectACK(UINT8 *buffer){
 	if(buffer[3] !=  0)  return 0; // MQTT Return Code
 	return 1;
 }
+
+// Aufruf bei Verbindungsaufbau des TCP-Servers mit einem externen Client
+UINT16  MQTT_Client_create_connect(UINT8*  buffer){
+UINT16 var;
+UINT8  index = 2; // Laenge der zu sendenden Nachricht
+		buffer[0] = MQTTCONNECT;
+		var = 4; 						// Protocol name Length
+		buffer[index++] = (UINT8)(var >> 8);
+		buffer[index++] = (UINT8)(var );
+		buffer[index++] = 'M';			// Protocol name
+		buffer[index++] = 'Q';
+		buffer[index++] = 'T';
+		buffer[index++] = 'T';
+		buffer[index++] =  MQTT_VERSION_3_1_1	;		// MQTT Version 4 = v3.1.1
+		buffer[index++] =  2	;		// connect flags QoS
+		var = 60; 						// Keep Alive
+		buffer[index++] = (UINT8)(var >> 8);
+		buffer[index++] = (UINT8)(var );
+
+		var = sprintf((char*)&buffer[index+2],uC.controller_name);
+		buffer[index  ] = (UINT8)(var >> 8);
+		buffer[index+1] = (UINT8)(var );
+		index += var+2;
+		//
+		buffer[1] = index -2; 			// MQTT-MsgLen = Laenge der zu sendenden Nachricht -2
+		return index;
+}
+
 // Callback ===========================================================
 // gibt die gewünschte Callback Signatur an die MQTT_CLIENT Struktur weiter
 void mqtt_set_callback(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, mqtt_callback_t  callback){
@@ -85,7 +113,7 @@ UINT8 isMqttPingResp( PubSubClient* pPubSubClient, UINT8 *buffer){
 
 // SUBSCRIPTION ===========================================================
 
-Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions ){
+Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT8 MaxSubscriptions ){
 	UINT8 	mqtt_msg_len;
 	UINT8   buf_index 			= 0;
 	UINT8 	subs_index 	= 0;
@@ -265,20 +293,20 @@ UINT8 index = 0;
 
 
 // Return: Laenge der TxMsg MQTT_Msg_Length +2
-UINT16 createPublishMsg(PublishNodeContext* pPubCon, UINT8 *TxBuf){
+UINT16 createPublishMsg(PublishNodeContext* pPublish, UINT8 *TxBuf){
 UINT16 len ;
 UINT16 len_val;
 float  value = 0.123456;
-	if( MQTT_PUBLISH_Scheduled == pPubCon->state){
-		if(!(pPubCon->topicLen)) return 0;
-		TxBuf[0] = pPubCon->headerflags.U8 ;  							// 0: 	Header
-		len = sprintf((char*)&TxBuf[4],"%s%s",uC.controller_name, pPubCon->topic_name);
+	if( MQTT_PUBLISH_Scheduled == pPublish->state){
+		if(!(pPublish->topicLen)) return 0;
+		TxBuf[0] = pPublish->headerflags.U8 ;  							// 0: 	Header
+		len = sprintf((char*)&TxBuf[4],"%s%s",uC.controller_name, pPublish->topic_name);
 		TxBuf[2] = (UINT8)(len >> 8);									// 2,3	Topic_Length
 		TxBuf[3] = (UINT8)(len );
 		len_val = sprintf((char*)&TxBuf[4 + len],"%f",value);
 		TxBuf[1] = len + len_val; 										// 1: 	MQTT_Msg_Length
-		pPubCon-> state =  MQTT_PUBLISH_SENT;
-		pPubCon->lastPublishActivity = uC.timer_1ms;
+		pPublish-> state =  MQTT_PUBLISH_SENT;
+		pPublish->lastPublishActivity = uC.timer_1ms;
 	    return TxBuf[1] +2;												// Laenge der Nachricht ist MQTT_Msg_Length +2
 	}
 	return 0;

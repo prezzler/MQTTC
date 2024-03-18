@@ -110,6 +110,7 @@ typedef enum CPP_ENUM_SIZE_8Bit {
 	MQTT_PUBLISH_FirstPublishRequired		= 1,		/// PUBLISH to be sent to Broker
 	MQTT_PUBLISH_Scheduled 	,		/// PUBLISH is in process
 	MQTT_PUBLISH_SENT		,		/// PUBLISH has been sent to Broker
+    MQTT_PUBLISH_ACK        ,       /// PUBLISH has been acknowledged
 	MQTT_PUBLISH_REC		,		/// PUBREC has been received
 	MQTT_PUBLISH_REL		,		/// PUBREL has been sent
 	MQTT_PUBLISH_COMP		,		/// PUBCOMP has been received
@@ -275,9 +276,11 @@ UINT32 millis();  // Millisekunden
 
 
 // MQTT Connect ==============================================
-UINT8 isMqttConnect(UINT8 *buffer);
-UINT8 createMqttConnectACK(UINT8 *buffer);
-UINT8 isMqttConnectACK(UINT8 *buffer);
+UINT8 isMqttConnect                 (UINT8 *buffer);
+UINT8 createMqttConnectACK          (UINT8 *buffer);
+UINT8 isMqttConnectACK              (UINT8 *buffer);
+UINT16  MQTT_Client_create_connect  (UINT8*  buffer){
+
 
 // PING ===========================================================
 UINT8 createMqttPingReq(UINT8 *buffer);
@@ -290,7 +293,7 @@ void mqtt_set_callback(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, mqtt_callback_t  ca
 void callbackAusloesen(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, char* topic, UINT8* payload, UINT16 length);
 
 // SUBSCRIPTION ===========================================================
-Subscription*	isMqttSubscribeAck				(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions);
+Subscription*	isMqttSubscribeAck				(Subscription aSubscripts[], UINT8 *buffer, UINT8 MaxSubscriptions);
 Subscription* 	search_Subscription_topic_match	(Subscription aSubscripts[], char* topic, UINT8 MaxSubscriptions);
 UINT8 			mqtt_SubscribeStructInit		(Subscription* pSubscript, UINT16 msgId, char* name, UINT8 QoS);
 Subscription* 	mqtt_find_SubscriptionStruct_which_are_Scheduled(Subscription aSubscripts[], UINT8 MaxSubscriptions);
@@ -301,7 +304,7 @@ int 			CheckTopicRxPub					(char* topic_pub, Subscription aSubscripts[], int Max
 // PUBLISH ===========================================================
 void 				mqtt_PublishStructALL_SetPublishScheduled( PublishNodeContext aPublishs[], UINT8 MaxPublishStructs);
 PublishNodeContext* mqtt_find_PublishStruct_which_are_Scheduled (PublishNodeContext aPublishs[], UINT8 MaxPublishStructs);
-UINT16 				createPublishMsg		(PublishNodeContext* pPubCon, UINT8 *TxBuf);
+UINT16 				createPublishMsg		(PublishNodeContext* pPublish, UINT8 *TxBuf);
 UINT8 				mqtt_PublishStructInit	(PublishNodeContext* aPublish, UINT16 msgId, char* name, UINT8 HeaderFlags, UINT32 publishPeriod);
 
 Subscription* isMqttPubRel(Subscription sub[], UINT8 MaxSubscriptions, UINT8 *buffer);

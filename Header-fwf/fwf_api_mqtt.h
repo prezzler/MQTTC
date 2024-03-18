@@ -100,7 +100,7 @@ UINT16  MQTT_Client_create_connect(UINT8*  buffer);
 // Call fuer TCP_connection
 
 void   fwf_MQTT_Node(u8_t flag);
-UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer, UINT16 msg_Rx_len);
+UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer);
 UINT16 MQTT_Client_MsgOutstanding(UINT8 * TxBuffer);
 
 

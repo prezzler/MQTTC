@@ -190,32 +190,6 @@ UINT8 index;
 //===============================================================================================
 
 
-// Aufruf bei Verbindungsaufbau des TCP-Servers mit einem externen Client
-UINT16  MQTT_Client_create_connect(UINT8*  buffer){
-UINT16 var;
-UINT8  index = 2; // Laenge der zu sendenden Nachricht
-		buffer[0] = MQTTCONNECT;
-		var = 4; 						// Protocol name Length
-		buffer[index++] = (UINT8)(var >> 8);
-		buffer[index++] = (UINT8)(var );
-		buffer[index++] = 'M';			// Protocol name
-		buffer[index++] = 'Q';
-		buffer[index++] = 'T';
-		buffer[index++] = 'T';
-		buffer[index++] =  MQTT_VERSION_3_1_1	;		// MQTT Version 4 = v3.1.1
-		buffer[index++] =  2	;		// connect flags QoS
-		var = 60; 						// Keep Alive
-		buffer[index++] = (UINT8)(var >> 8);
-		buffer[index++] = (UINT8)(var );
-
-		var = sprintf((char*)&buffer[index+2],uC.controller_name);
-		buffer[index  ] = (UINT8)(var >> 8);
-		buffer[index+1] = (UINT8)(var );
-		index += var+2;
-		//
-		buffer[1] = index -2; 			// MQTT-MsgLen = Laenge der zu sendenden Nachricht -2
-		return index;
-}
 
 
 
@@ -444,7 +418,7 @@ void fwf_MQTT_Node(u8_t uip_flags){
 		    	mqtt_client_var->countSendData = MQTT_Client_MsgOutstanding(mqtt_client_var->pSendData);
 		    }
 		    if( (UIP_NEWDATA) & uip_flags ){ // Response einarbeiten
-		    	mqtt_client_var->countSendData = MQTT_Client_Response_Processing(&uip_rxbuf[TCP_HEADER_SIZE + UIP_LLH_LEN], uip_len);
+		    	mqtt_client_var->countSendData = MQTT_Client_Response_Processing(&uip_rxbuf[TCP_HEADER_SIZE + UIP_LLH_LEN]);
 		    }
 			break;
 
@@ -466,7 +440,7 @@ void fwf_MQTT_Node(u8_t uip_flags){
 // Bearbeiten von Requests an MQTT Client und generieren einer Antwort in mqtt_client_var->pSendData
 // RxBuffer: Buffer der eingehenden MQTT-Response
 // Return: Laenge der TxMsg
-UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer, UINT16 msg_Rx_len){
+UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer){
 Subscription* pSubscriptionStruct;
 static PublishBrokerContext tmpRxPublish; // temporaere Speicherung vor Erkennung der zugehoerigen Subscription
 int ret_index = 0;
@@ -474,7 +448,7 @@ int ret_index = 0;
 	if( isMqttPingResp(pPubSubClient, RxBuffer) ){
 		pPubSubClient->pingOutstanding = false;
 	}
-	if( (pSubscriptionStruct = isMqttSubscribeAck(aSubscriptions, RxBuffer, msg_Rx_len, MaxSubscriptions_of_this_Node) ) ){ // Subscribe Acknowledgement erhalten und Subscription mit uebereinstimmenden Message_ID (pSubscriptionStruct)
+	if( (pSubscriptionStruct = isMqttSubscribeAck(aSubscriptions, RxBuffer, MaxSubscriptions_of_this_Node) ) ){ // Subscribe Acknowledgement erhalten und Subscription mit uebereinstimmenden Message_ID (pSubscriptionStruct)
 		// State wird in isMqttSubscribeAck() gesetzt
 		// ToDo: Debugging
 		uCdbg_logv_entry("SubscriptionACK:%",pSubscriptionStruct->topic_name);
