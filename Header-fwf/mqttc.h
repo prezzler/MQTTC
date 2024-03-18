@@ -307,10 +307,10 @@ PublishNodeContext* mqtt_find_PublishStruct_which_are_Scheduled (PublishNodeCont
 UINT16 				createPublishMsg		(PublishNodeContext* pPublish, UINT8 *TxBuf);
 UINT8 				mqtt_PublishStructInit	(PublishNodeContext* aPublish, UINT16 msgId, char* name, UINT8 HeaderFlags, UINT32 publishPeriod);
 
-Subscription* isMqttPubRel(Subscription sub[], UINT8 MaxSubscriptions, UINT8 *buffer);
-UINT16 	createMqttPuback(UINT8 *buffer, PublishBrokerContext* publ) ;
-UINT16 	createMqttPubrec(UINT8 *buffer, PublishBrokerContext* publ) ;
-UINT16  createMqttPubComp(UINT8 *buffer, PublishBrokerContext* publ);
+Subscription* isMqttPubRel  (Subscription aSubscripts[], UINT8 MaxSubscriptions, UINT8 *buffer);
+UINT16 createMqttPuback     (UINT8 *buffer, Subscription* pSubscript);
+UINT16 createMqttPubrec     (UINT8 *buffer, Subscription* pSubscript);
+UINT16 createMqttPubComp    (UINT8 *buffer, Subscription* pSubscript);
 
 MqttConnect* MqttConnectKonstruktor(PubSubClient* src); //setzt Standartwerte
 

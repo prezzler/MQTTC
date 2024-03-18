@@ -459,14 +459,12 @@ int ret_index = 0;
 		if (QoS > 0){
 			if (QoS == 1){
 				// sendet ein Puback
-				pSubscriptionStruct->state = MQTT_SUBSCRIBE_PUBLISH_ACKED; // Publish Ack has been sent
-				return createMqttPuback(mqtt_client_var->pSendData, &pSubscriptionStruct->RxPublish);
+				return createMqttPuback(mqtt_client_var->pSendData, pSubscriptionStruct);
 			}
 			else if (QoS == 2){
 				//aRxPublish->subs_index = ret_index; // Speichert den Index der zugehoerigen Subscription
 				// sendet ein Pubrec
-				pSubscriptionStruct->state = MQTT_SUBSCRIBE_PUBLISH_REC; // Publish Rec has been sent
-				return createMqttPubrec(mqtt_client_var->pSendData, &pSubscriptionStruct->RxPublish);
+				return createMqttPubrec(mqtt_client_var->pSendData, pSubscriptionStruct);
 			}
 		}
 		// ToDo Output_Publish(aRxPublish->topic_name, aRxPublish->payload, aRxPublish->payloadLen); // Output von Publish
@@ -481,7 +479,7 @@ int ret_index = 0;
 		// ToDo Output_Publish(aRxPublish->topic_name, aRxPublish->payload, aRxPublish->payloadLen); // Output von Publish
 	}
 	if ((pSubscriptionStruct = isMqttPubRel( aSubscriptions, MaxSubscriptions_of_this_Node, RxBuffer ))){ // QoS2
-		UINT16 	dataLen =  createMqttPubComp(mqtt_client_var->pSendData, &pSubscriptionStruct->RxPublish); 
+		UINT16 	dataLen =  createMqttPubComp(mqtt_client_var->pSendData, pSubscriptionStruct); 
 		pSubscriptionStruct->state = MQTT_SUBSCRIBE_PUBLISH_COMP; // Publish Comp has been sent
 		return dataLen;		// sendet ein Pubcomp
 	}

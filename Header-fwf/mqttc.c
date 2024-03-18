@@ -327,45 +327,47 @@ UINT8 mqtt_PublishStructInit(PublishNodeContext* aPublish, UINT16 msgId, char* n
 	return 0;
 }
 
-Subscription* isMqttPubRel(Subscription sub[], UINT8 MaxSubscriptions, UINT8 *buffer) {
+Subscription* isMqttPubRel(Subscription aSubscripts[], UINT8 MaxSubscriptions, UINT8 *buffer) {
 	if((buffer[0]& 0xf0)!= MQTTPUBREL) return 0; 		//bit 4-7
 	UINT16 message_id = (buffer[2] << 8) + buffer[3]; 	// message ID wird von Pubrel uebertragen 
 
     int index_sub; 
     //suche passende Message ID
     for(int i = 0; i < MaxSubscriptions; i++){
-        if(&sub[i] != NULL){
-            if((sub[i].state == MQTT_SUBSCRIBE_PUBLISH_REC) && (sub[i].RxPublish.message_id == message_id)){
+        if(&aSubscripts[i] != NULL){
+            if((aSubscripts[i].state == MQTT_SUBSCRIBE_PUBLISH_REC) && (aSubscripts[i].RxPublish.message_id == message_id)){
 
-                sub[i].state = MQTT_SUBSCRIBE_PUBLISH_REL;
+                aSubscripts[i].state = MQTT_SUBSCRIBE_PUBLISH_REL;
                 index_sub = i;
             }
         }
     }
-	return &sub[index_sub];
+	return &aSubscripts[index_sub];
 }
 
-UINT16 createMqttPuback(UINT8 *buffer, PublishBrokerContext* publ) {
+UINT16 createMqttPuback(UINT8 *buffer, Subscription* pSubscript) {
 	buffer[0] = MQTTPUBACK ;	       // Packet Type
 	buffer[1] = 3;     				   // Remaining Length
-	buffer[2] = publ->message_id  >> 8; 	// set MsgID
-	buffer[3] = publ->message_id;
+	buffer[3] = pSubscript->RxPublish.message_id;
+	buffer[2] = pSubscript->RxPublish.message_id  >> 8; 	// set MsgID
+    pSubscript->state = MQTT_SUBSCRIBE_PUBLISH_ACKED; // Publish Ack has been sent
 	return 4;
 }
 
-UINT16 createMqttPubrec(UINT8 *buffer, PublishBrokerContext* publ) {
+UINT16 	createMqttPubrec    (UINT8 *buffer, Subscription* pSubscript){
 	buffer[0] = MQTTPUBREC ;	       // Packet Type
 	buffer[1] = 3;     				   // Remaining Length
-	buffer[2] = publ->message_id  >> 8; 	// set MsgID
-	buffer[3] = publ->message_id;
+	buffer[2] = pSubscript->RxPublish.message_id  >> 8; 	// set MsgID
+	buffer[3] = pSubscript->RxPublish.message_id;
+    pSubscript->state = MQTT_SUBSCRIBE_PUBLISH_REC; // Publish Rec has been sent
 	return 4;
 }
 
-UINT16 createMqttPubComp(UINT8 *buffer, PublishBrokerContext* publ) {
+UINT16 createMqttPubComp(UINT8 *buffer, Subscription* pSubscript) {
     buffer[0] = MQTTPUBCOMP ;	       // Packet Type
 	buffer[1] = 3;     				   // Remaining Length
-	buffer[2] = publ->message_id  >> 8; 	// set MsgID
-	buffer[3] = publ->message_id;
+	buffer[2] = pSubscript->RxPublish.message_id  >> 8; 	// set MsgID
+	buffer[3] = pSubscript->RxPublish.message_id;
 	return 4;
 }
 
