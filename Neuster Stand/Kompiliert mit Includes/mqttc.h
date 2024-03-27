@@ -202,18 +202,18 @@ typedef struct {
     UINT16 		payloadLen;
     uint16_t 	remainingLength;
     uint16_t 	CleanSession;
-} PublishBrokerContext;
+} BrokerRxPublish;
 
 typedef struct  {
 	MQTT_SUBSCRIBE_state 	state;
-    UINT16 	message_id;
-    UINT16 	topic_length;
-    uint16_t remainingLength;	// ToDo Wozu
-    char 	topic_name[TOPIC_LENGTH];
-    UINT8   QoS;
-    UINT8 	acked; // Acknowledge has been sent
     HeaderFlags	headerflags;     		// Message_type:4; Reserved:4;
-    PublishBrokerContext RxPublish; 	// empfangene Publish
+    UINT16 		message_id;
+    UINT16 		topic_length;
+    char 		topic_name[TOPIC_LENGTH];
+    uint16_t 	remainingLength;	// ToDo Wozu
+    UINT8   	QoS;
+    UINT8 		acked; // Acknowledge has been sent
+    BrokerRxPublish BrRxPublish; 	// empfangene Publish
 } Subscription;
 
 
@@ -373,8 +373,7 @@ int   Client_available(TCP_MQTT_CLIENT_CONTEXT* src);  // Benutzung: Client_avai
 //   if (_sock != 255)
 //     send(_sock, buf, size);
 // }
-// also kann man schon mal eine Pseudo Write Funktion   schreiben
-
+// also kann man schon mal eine Pseudo Write Funktion schreiben
 
 //_______________________________Ende-Client-Funktionen__________________________________________________
 

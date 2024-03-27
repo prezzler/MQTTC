@@ -189,10 +189,6 @@ UINT8 index;
 
 //===============================================================================================
 
-
-
-
-
 // Anlegen von Subscription-Requests in aSubscriptions[]
 UINT8 isMqttSubscribeRequest(UINT8 *buffer, UINT16 msg_length){
 UINT8 	mqtt_msg_len;
@@ -440,10 +436,8 @@ void fwf_MQTT_Node(u8_t uip_flags){
 // Bearbeiten von Requests an MQTT Client und generieren einer Antwort in mqtt_client_var->pSendData
 // RxBuffer: Buffer der eingehenden MQTT-Response
 // Return: Laenge der TxMsg
-UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer){
+UINT16 MQTT_Client_Response_Processing(UINT8 *RxBuffer ){
 Subscription* pSubscriptionStruct;
-static PublishBrokerContext tmpRxPublish; // temporaere Speicherung vor Erkennung der zugehoerigen Subscription
-int ret_index = 0;
 
 	if( isMqttPingResp(pPubSubClient, RxBuffer) ){
 		pPubSubClient->pingOutstanding = false;
@@ -454,16 +448,18 @@ int ret_index = 0;
 		uCdbg_logv_entry("SubscriptionACK:%",pSubscriptionStruct->topic_name);
 	}
 	if( (pSubscriptionStruct = isMqttRxPublish(RxBuffer, aSubscriptions,MaxSubscriptions_of_this_Node))){	// pSubscriptionStruct wird wiederverwendet und enthaelt einen Pointer auf die passende Subscription
-		int QoS = pSubscriptionStruct->RxPublish.headerflags.BA.QoS;
+		int QoS = pSubscriptionStruct->BrRxPublish.headerflags.BA.QoS;
 		// wenn QoS = 0, dann wird keine Antwort gesendet, ansonsten: Puback oder Pubrec
 		if (QoS > 0){
 			if (QoS == 1){
 				// sendet ein Puback
-				return createMqttPuback(mqtt_client_var->pSendData, pSubscriptionStruct);
+				pSubscriptionStruct->state = MQTT_SUBSCRIBE_PUBLISH_ACKED; // Publish Ack has been sent
+				return createMqttPuback(mqtt_client_var->pSendData, pSubscriptionStruct );
 			}
 			else if (QoS == 2){
 				//aRxPublish->subs_index = ret_index; // Speichert den Index der zugehoerigen Subscription
 				// sendet ein Pubrec
+				pSubscriptionStruct->state = MQTT_SUBSCRIBE_PUBLISH_REC; // Publish Rec has been sent
 				return createMqttPubrec(mqtt_client_var->pSendData, pSubscriptionStruct);
 			}
 		}
@@ -471,15 +467,15 @@ int ret_index = 0;
 		// Speichern der Publish
 		// Output von Publish
 		callbackAusloesen(mqtt_client_var ,
-						  pSubscriptionStruct->RxPublish.topic_name,
-						  pSubscriptionStruct->RxPublish.payload,
-						  pSubscriptionStruct->RxPublish.payloadLen);
+						  pSubscriptionStruct->BrRxPublish.topic_name,
+						  pSubscriptionStruct->BrRxPublish.payload,
+						  pSubscriptionStruct->BrRxPublish.payloadLen);
 		// loest die Callback-Funktion von innerhalb der MQTTC-Bibliothek aus, um die empfangene Nachricht an my_callback zu uebergeben --> entspricht dem Output von Publish
 
 		// ToDo Output_Publish(aRxPublish->topic_name, aRxPublish->payload, aRxPublish->payloadLen); // Output von Publish
 	}
 	if ((pSubscriptionStruct = isMqttPubRel( aSubscriptions, MaxSubscriptions_of_this_Node, RxBuffer ))){ // QoS2
-		UINT16 	dataLen =  createMqttPubComp(mqtt_client_var->pSendData, pSubscriptionStruct); 
+		UINT16 	dataLen =  createMqttPubComp(mqtt_client_var->pSendData, pSubscriptionStruct );
 		pSubscriptionStruct->state = MQTT_SUBSCRIBE_PUBLISH_COMP; // Publish Comp has been sent
 		return dataLen;		// sendet ein Pubcomp
 	}
