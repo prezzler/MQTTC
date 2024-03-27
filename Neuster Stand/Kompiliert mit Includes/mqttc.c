@@ -46,6 +46,34 @@ UINT8 isMqttConnectACK(UINT8 *buffer){
 	if(buffer[3] !=  0)  return 0; // MQTT Return Code
 	return 1;
 }
+
+// Aufruf bei Verbindungsaufbau des TCP-Servers mit einem externen Client
+UINT16  MQTT_Client_create_connect(UINT8*  buffer){
+UINT16 var;
+UINT8  index = 2; // Laenge der zu sendenden Nachricht
+		buffer[0] = MQTTCONNECT;
+		var = 4; 						// Protocol name Length
+		buffer[index++] = (UINT8)(var >> 8);
+		buffer[index++] = (UINT8)(var );
+		buffer[index++] = 'M';			// Protocol name
+		buffer[index++] = 'Q';
+		buffer[index++] = 'T';
+		buffer[index++] = 'T';
+		buffer[index++] =  MQTT_VERSION_3_1_1	;		// MQTT Version 4 = v3.1.1
+		buffer[index++] =  2	;		// connect flags QoS
+		var = 60; 						// Keep Alive
+		buffer[index++] = (UINT8)(var >> 8);
+		buffer[index++] = (UINT8)(var );
+
+		var = sprintf((char*)&buffer[index+2],uC.controller_name);
+		buffer[index  ] = (UINT8)(var >> 8);
+		buffer[index+1] = (UINT8)(var );
+		index += var+2;
+		//
+		buffer[1] = index -2; 			// MQTT-MsgLen = Laenge der zu sendenden Nachricht -2
+		return index;
+}
+
 // Callback ===========================================================
 // gibt die gewünschte Callback Signatur an die MQTT_CLIENT Struktur weiter
 void mqtt_set_callback(TCP_MQTT_CLIENT_CONTEXT* mqtt_client, mqtt_callback_t  callback){
@@ -85,7 +113,7 @@ UINT8 isMqttPingResp( PubSubClient* pPubSubClient, UINT8 *buffer){
 
 // SUBSCRIPTION ===========================================================
 
-Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT16 msg_length, UINT8 MaxSubscriptions ){
+Subscription* isMqttSubscribeAck(Subscription aSubscripts[], UINT8 *buffer, UINT8 MaxSubscriptions ){
 	UINT8 	mqtt_msg_len;
 	UINT8   buf_index 			= 0;
 	UINT8 	subs_index 	= 0;
@@ -185,38 +213,40 @@ int CheckTopicRxPub(char* topic_pub, Subscription aSubscripts[], int MaxSubscrip
 
 // Prüft ob der eingehende Buffer ein Publish ist und speichert in der zugehörigen Subscription
 // checkt ob der publish topic auch in einer Subscription mit state = MQTT_SUBSCRIBE_ACKED ist
-Subscription* isMqttRxPublish(UINT8 *buffer, Subscription sub[], int max_number_subscriptions){
+Subscription* isMqttRxPublish(UINT8 *buffer, Subscription aSubscripts[], int max_number_subscriptions){
 	UINT16 len;
 	int payloadLen;
 	int index_buff = 0; //index of buffer
 
 	if((buffer[0]& 0xf0)!= MQTTPUBLISH) return 0; //bit 4-7
 
-	int index_sub = CheckTopicRxPub((char*)&buffer[4], sub, max_number_subscriptions); // ueberpruefe Topic
+	int index_sub = CheckTopicRxPub((char*)&buffer[4], aSubscripts, max_number_subscriptions); // ueberpruefe Topic
 
-	sub[index_sub].RxPublish.headerflags.BA.QoS    = (buffer[0] & 0x06) >> 1; 		// Bit 2 und 1
-	sub[index_sub].RxPublish.headerflags.BA.DUP    = (buffer[0] & 0x08) >> 3; 		// Bit 3 , DUP bei QoS 0 immer 0
-	sub[index_sub].RxPublish.headerflags.BA.Retain = (buffer[0] & 0x01);    		// Bit 0 , wenn true (1) dann speichert der Server die Nachricht um auch an alle zukünftigen Subs. des Topics zu schicken
-	sub[index_sub].RxPublish.remainingLength 		= buffer[1]; 					// MQTT_Msg_Length index 1
+	aSubscripts[index_sub].RxPublish.headerflags.BA.QoS    = (buffer[0] & 0x06) >> 1; 		// Bit 2 und 1
+	aSubscripts[index_sub].RxPublish.headerflags.BA.DUP    = (buffer[0] & 0x08) >> 3; 		// Bit 3 , DUP bei QoS 0 immer 0
+	aSubscripts[index_sub].RxPublish.headerflags.BA.Retain = (buffer[0] & 0x01);    		// Bit 0 , wenn true (1) dann speichert der Server die Nachricht um auch an alle zukünftigen Subs. des Topics zu schicken
+	aSubscripts[index_sub].RxPublish.remainingLength 		= buffer[1]; 					// MQTT_Msg_Length index 1
 
 	len = ( (UINT16)buffer[2] << 8 ) + buffer[3]; 		//topic length: index 2,3
-	sub[index_sub].RxPublish.topicLen = len;
+	aSubscripts[index_sub].RxPublish.topicLen = len;
 
-	strncpy(sub[index_sub].RxPublish.topic_name, (char*)&buffer[4], sub[index_sub].RxPublish.topicLen);	// index 4
-	sub[index_sub].RxPublish.topic_name[len] = '\0'; 								// TODO: notwendig?
+	strncpy(aSubscripts[index_sub].RxPublish.topic_name, (char*)&buffer[4], aSubscripts[index_sub].RxPublish.topicLen);	// index 4
+	aSubscripts[index_sub].RxPublish.topic_name[len] = '\0'; 								// TODO: notwendig?
 	index_buff = 4 + len;
 
     // Wenn QoS > 0 dann ist die Message ID enthalten
-	if(sub[index_sub].RxPublish.headerflags.BA.QoS > 0){
-		sub[index_sub].RxPublish.message_id = (buffer[index_buff] << 8) + buffer[index_buff+1]; 	// Ist nur bei QoS > 0 enthalten
+	if(aSubscripts[index_sub].RxPublish.headerflags.BA.QoS > 0){
+		aSubscripts[index_sub].RxPublish.message_id = (buffer[index_buff] << 8) + buffer[index_buff+1]; 	// Ist nur bei QoS > 0 enthalten
 	}
 	index_buff += 2;
 
-    payloadLen = sub[index_sub].RxPublish.remainingLength - (index_buff - 1);   			// remLen - länge seit remLen (remLen fängt bei 1 an)
-    sub[index_sub].RxPublish.payloadLen = payloadLen;
+    payloadLen = aSubscripts[index_sub].RxPublish.remainingLength - (index_buff - 1);   			// remLen - länge seit remLen (remLen fängt bei 1 an)
+    aSubscripts[index_sub].RxPublish.payloadLen = payloadLen;
 
-	strncpy((char*) sub[index_sub].RxPublish.payload , (char*)&buffer[index_buff], payloadLen);		// Wozu das?
-	return &sub[index_sub];
+	strncpy((char*) aSubscripts[index_sub].RxPublish.payload , (char*)&buffer[index_buff], payloadLen);		// Wozu das?
+    
+    aSubscripts[index_sub].state = MQTT_SUBSCRIBE_PUBLISH_RECEIVED;
+	return &aSubscripts[index_sub];
 }
 
 
@@ -265,20 +295,20 @@ UINT8 index = 0;
 
 
 // Return: Laenge der TxMsg MQTT_Msg_Length +2
-UINT16 createPublishMsg(PublishNodeContext* pPubCon, UINT8 *TxBuf){
+UINT16 createPublishMsg(PublishNodeContext* pPublish, UINT8 *TxBuf){
 UINT16 len ;
 UINT16 len_val;
 float  value = 0.123456;
-	if( MQTT_PUBLISH_Scheduled == pPubCon->state){
-		if(!(pPubCon->topicLen)) return 0;
-		TxBuf[0] = pPubCon->headerflags.U8 ;  							// 0: 	Header
-		len = sprintf((char*)&TxBuf[4],"%s%s",uC.controller_name, pPubCon->topic_name);
+	if( MQTT_PUBLISH_Scheduled == pPublish->state){
+		if(!(pPublish->topicLen)) return 0;
+		TxBuf[0] = pPublish->headerflags.U8 ;  							// 0: 	Header
+		len = sprintf((char*)&TxBuf[4],"%s%s",uC.controller_name, pPublish->topic_name);
 		TxBuf[2] = (UINT8)(len >> 8);									// 2,3	Topic_Length
 		TxBuf[3] = (UINT8)(len );
 		len_val = sprintf((char*)&TxBuf[4 + len],"%f",value);
 		TxBuf[1] = len + len_val; 										// 1: 	MQTT_Msg_Length
-		pPubCon-> state =  MQTT_PUBLISH_SENT;
-		pPubCon->lastPublishActivity = uC.timer_1ms;
+		pPublish-> state =  MQTT_PUBLISH_SENT;
+		pPublish->lastPublishActivity = uC.timer_1ms;
 	    return TxBuf[1] +2;												// Laenge der Nachricht ist MQTT_Msg_Length +2
 	}
 	return 0;
@@ -297,45 +327,47 @@ UINT8 mqtt_PublishStructInit(PublishNodeContext* aPublish, UINT16 msgId, char* n
 	return 0;
 }
 
-Subscription* isMqttPubRel(Subscription sub[], UINT8 MaxSubscriptions, UINT8 *buffer) {
+Subscription* isMqttPubRel(Subscription aSubscripts[], UINT8 MaxSubscriptions, UINT8 *buffer) {
 	if((buffer[0]& 0xf0)!= MQTTPUBREL) return 0; 		//bit 4-7
 	UINT16 message_id = (buffer[2] << 8) + buffer[3]; 	// message ID wird von Pubrel uebertragen 
 
     int index_sub; 
     //suche passende Message ID
     for(int i = 0; i < MaxSubscriptions; i++){
-        if(&sub[i] != NULL){
-            if((sub[i].state == MQTT_SUBSCRIBE_PUBLISH_REC) && (sub[i].RxPublish.message_id == message_id)){
+        if(&aSubscripts[i] != NULL){
+            if((aSubscripts[i].state == MQTT_SUBSCRIBE_PUBLISH_REC) && (aSubscripts[i].RxPublish.message_id == message_id)){
 
-                sub[i].state = MQTT_SUBSCRIBE_PUBLISH_REL;
+                aSubscripts[i].state = MQTT_SUBSCRIBE_PUBLISH_REL;
                 index_sub = i;
             }
         }
     }
-	return &sub[index_sub];
+	return &aSubscripts[index_sub];
 }
 
-UINT16 createMqttPuback(UINT8 *buffer, PublishBrokerContext* publ) {
+UINT16 createMqttPuback(UINT8 *buffer, Subscription* pSubscript) {
 	buffer[0] = MQTTPUBACK ;	       // Packet Type
 	buffer[1] = 3;     				   // Remaining Length
-	buffer[2] = publ->message_id  >> 8; 	// set MsgID
-	buffer[3] = publ->message_id;
+	buffer[3] = pSubscript->RxPublish.message_id;
+	buffer[2] = pSubscript->RxPublish.message_id  >> 8; 	// set MsgID
+    pSubscript->state = MQTT_SUBSCRIBE_PUBLISH_ACKED; // Publish Ack has been sent
 	return 4;
 }
 
-UINT16 createMqttPubrec(UINT8 *buffer, PublishBrokerContext* publ) {
+UINT16 	createMqttPubrec    (UINT8 *buffer, Subscription* pSubscript){
 	buffer[0] = MQTTPUBREC ;	       // Packet Type
 	buffer[1] = 3;     				   // Remaining Length
-	buffer[2] = publ->message_id  >> 8; 	// set MsgID
-	buffer[3] = publ->message_id;
+	buffer[2] = pSubscript->RxPublish.message_id  >> 8; 	// set MsgID
+	buffer[3] = pSubscript->RxPublish.message_id;
+    pSubscript->state = MQTT_SUBSCRIBE_PUBLISH_REC; // Publish Rec has been sent
 	return 4;
 }
 
-UINT16 createMqttPubComp(UINT8 *buffer, PublishBrokerContext* publ) {
+UINT16 createMqttPubComp(UINT8 *buffer, Subscription* pSubscript) {
     buffer[0] = MQTTPUBCOMP ;	       // Packet Type
 	buffer[1] = 3;     				   // Remaining Length
-	buffer[2] = publ->message_id  >> 8; 	// set MsgID
-	buffer[3] = publ->message_id;
+	buffer[2] = pSubscript->RxPublish.message_id  >> 8; 	// set MsgID
+	buffer[3] = pSubscript->RxPublish.message_id;
 	return 4;
 }
 

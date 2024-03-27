@@ -279,7 +279,7 @@ UINT32 millis();  // Millisekunden
 UINT8 isMqttConnect                 (UINT8 *buffer);
 UINT8 createMqttConnectACK          (UINT8 *buffer);
 UINT8 isMqttConnectACK              (UINT8 *buffer);
-UINT16  MQTT_Client_create_connect  (UINT8*  buffer){
+UINT16  MQTT_Client_create_connect  (UINT8*  buffer);
 
 
 // PING ===========================================================
@@ -298,7 +298,7 @@ Subscription* 	search_Subscription_topic_match	(Subscription aSubscripts[], char
 UINT8 			mqtt_SubscribeStructInit		(Subscription* pSubscript, UINT16 msgId, char* name, UINT8 QoS);
 Subscription* 	mqtt_find_SubscriptionStruct_which_are_Scheduled(Subscription aSubscripts[], UINT8 MaxSubscriptions);
 UINT16 			createSubscribeReqMsg			(Subscription* pSubscript, UINT8 *TxBuf);
-Subscription* 		isMqttRxPublish					(UINT8 *buffer, Subscription* aSubscripts[], int max_number_subscriptions);
+Subscription* 	isMqttRxPublish				    (UINT8 *buffer, Subscription aSubscripts[], int max_number_subscriptions);
 int 			CheckTopicRxPub					(char* topic_pub, Subscription aSubscripts[], int MaxSubscriptions);
 
 // PUBLISH ===========================================================
